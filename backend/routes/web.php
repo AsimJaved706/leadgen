@@ -23,6 +23,7 @@ Route::prefix('api')->group(function () {
     Route::post('/stripe/webhook', StripeWebhookController::class);
     Route::middleware(['auth:sanctum', ActiveUser::class])->group(function () {
         Route::get('/me', fn (Request $r) => $r->user()->load('workspaces.plan'));
+        Route::put('/profile', [AuthController::class, 'updateProfile']);
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/workspaces/{workspace}/summary', [WorkspaceController::class, 'summary']);
         Route::get('/workspaces/{workspace}/leads', [WorkspaceController::class, 'leads']);

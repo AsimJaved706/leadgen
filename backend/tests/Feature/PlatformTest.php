@@ -38,14 +38,35 @@ class PlatformTest extends TestCase
 
     public function test_registration_creates_workspace_hashes_password_and_ignores_privilege_injection(): void
     {
-        $this->postJson('/api/register', ['name' => 'Jamie', 'email' => 'jamie@example.com', 'password' => 'StrongPassword123', 'password_confirmation' => 'StrongPassword123', 'workspace' => 'Acme', 'is_super_admin' => true])->assertCreated()->assertJsonPath('is_super_admin', false)->assertJsonMissingPath('password');
+        $this->postJson('/api/register', ['name' => 'Jamie', 'email' => 'jamie@example.com', 'password' => 'StrongPassword123!', 'password_confirmation' => 'StrongPassword123!', 'workspace' => 'Acme', 'is_super_admin' => true])->assertCreated()->assertJsonPath('is_super_admin', false)->assertJsonMissingPath('password');
         $u = User::first();
-        $this->assertTrue(Hash::check('StrongPassword123', $u->password));
+        $this->assertTrue(Hash::check('StrongPassword123!', $u->password));
         $this->assertSame('owner', $u->workspaces()->first()->pivot->role);
         $this->assertSame(6, $u->workspaces()->first()->emailTemplates()->count());
         $this->assertDatabaseHas('email_templates', ['workspace_id' => $u->workspaces()->first()->id, 'name' => 'Professional Introduction']);
         $this->getJson('/api/me')->assertOk();
         $this->getJson('/api/admin/users')->assertForbidden();
+    }
+
+    public function test_registration_requires_a_symbol_and_matching_confirmation(): void
+    {
+        $base = ['name' => 'Jamie', 'email' => 'jamie@example.com', 'workspace' => 'Acme'];
+        $this->postJson('/api/register', $base + ['password' => 'StrongPassword123', 'password_confirmation' => 'StrongPassword123'])
+            ->assertUnprocessable()->assertJsonValidationErrors('password');
+        $this->postJson('/api/register', $base + ['password' => 'StrongPassword123!', 'password_confirmation' => 'DifferentPassword123!'])
+            ->assertUnprocessable()->assertJsonValidationErrors('password');
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_user_can_update_profile_and_password_with_current_password(): void
+    {
+        $user = User::factory()->create(['name' => 'Old Name', 'password' => 'ExistingPassword123!']);
+        $this->actingAs($user)->putJson('/api/profile', ['name' => 'Jamie Parker', 'current_password' => 'wrong', 'password' => 'NewPassword123!', 'password_confirmation' => 'NewPassword123!'])
+            ->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        $this->putJson('/api/profile', ['name' => 'Jamie Parker', 'current_password' => 'ExistingPassword123!', 'password' => 'NewPassword123!', 'password_confirmation' => 'NewPassword123!'])
+            ->assertOk()->assertJsonPath('name', 'Jamie Parker');
+        $this->assertTrue(Hash::check('NewPassword123!', $user->fresh()->password));
+        $this->assertDatabaseHas('audit_logs', ['user_id' => $user->id, 'action' => 'user.profile_updated']);
     }
 
     public function test_guests_and_members_cannot_access_any_admin_endpoint(): void

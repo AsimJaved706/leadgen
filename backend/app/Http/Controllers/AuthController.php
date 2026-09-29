@@ -18,7 +18,7 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
-        $data = $request->validate(['name' => 'required|string|max:120', 'email' => 'required|email|max:255|unique:users', 'password' => ['required', 'confirmed', Password::min(12)->letters()->numbers()], 'workspace' => 'required|string|max:100']);
+        $data = $request->validate(['name' => 'required|string|max:120', 'email' => 'required|email|max:255|unique:users', 'password' => ['required', 'confirmed', Password::min(12)->letters()->numbers()->symbols()], 'workspace' => 'required|string|max:100']);
         $user = DB::transaction(function () use ($data) {
             $plan = Plan::where('slug', 'free')->where('is_active', true)->firstOrFail();
             $user = User::create(['name' => $data['name'], 'email' => strtolower($data['email']), 'password' => $data['password']]);
@@ -60,5 +60,23 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return response()->json(['message' => 'Signed out.']);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:120',
+            'current_password' => ['nullable', 'required_with:password', 'current_password:web'],
+            'password' => ['nullable', 'confirmed', Password::min(12)->letters()->numbers()->symbols()],
+        ]);
+        $user = $request->user();
+        $user->name = $data['name'];
+        if (! empty($data['password'])) {
+            $user->password = $data['password'];
+        }
+        $user->save();
+        Audit::record('user.profile_updated', $user->id, ['password_changed' => ! empty($data['password'])]);
+
+        return $user->fresh()->load('workspaces.plan');
     }
 }
