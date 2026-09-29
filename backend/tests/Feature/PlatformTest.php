@@ -138,6 +138,7 @@ class PlatformTest extends TestCase
             ->assertOk()->assertJsonPath('workspaces.0.id', $workspace->id)
             ->assertJsonPath('workspaces.0.access.allowed', true)
             ->assertJsonPath('workspaces.0.plan.slug', 'professional');
+        $this->withToken($token)->postJson('/api/extension/token', ['extension_id' => str_repeat('a', 32)])->assertForbidden();
 
         $workspace->update(['plan_id' => Plan::where('slug', 'free')->firstOrFail()->id]);
         $this->withToken($token)->getJson('/api/extension/context')
@@ -152,7 +153,7 @@ class PlatformTest extends TestCase
         $otherUser = User::factory()->create();
         $otherWorkspace = $this->workspace($otherUser);
         $otherList = $otherWorkspace->lists()->create(['name' => 'Private']);
-        $token = $user->createToken('test', ['extension:read', 'extension:write', 'extension:refresh'], now()->addMinutes(15))->plainTextToken;
+        $token = $user->createToken('test', ['extension:read', 'extension:write'], now()->addMinutes(15))->plainTextToken;
         $payload = ['list_id' => $list->id, 'leads' => [['name' => 'Acme HVAC', 'place_id' => 'place-1', 'website' => 'https://acme.test']]];
 
         $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', $payload)

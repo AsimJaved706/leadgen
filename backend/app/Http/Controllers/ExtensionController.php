@@ -16,12 +16,9 @@ class ExtensionController extends Controller
     public function token(Request $request)
     {
         $request->validate(['extension_id' => ['required', 'string', 'regex:/^[a-p]{32}$/']]);
-        if ($request->user()->currentAccessToken() && method_exists($request->user()->currentAccessToken(), 'delete')) {
-            abort_unless($request->user()->tokenCan('extension:refresh'), 403);
-            $request->user()->currentAccessToken()->delete();
-        }
+        abort_if($request->bearerToken(), 403, 'Reconnect through the Leadspace dashboard.');
         $expiresAt = now()->addMinutes(15);
-        $token = $request->user()->createToken('Leadspace Chrome Extension', ['extension:read', 'extension:write', 'extension:refresh'], $expiresAt);
+        $token = $request->user()->createToken('Leadspace Chrome Extension', ['extension:read', 'extension:write'], $expiresAt);
 
         Audit::record('extension.connected', null, ['extension_id' => $request->string('extension_id')->toString(), 'expires_at' => $expiresAt->toISOString()]);
 
