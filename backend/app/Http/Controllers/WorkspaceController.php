@@ -157,6 +157,10 @@ class WorkspaceController extends Controller
             $date = $start->copy()->addDays($i)->toDateString();
             $growth[] = ['date' => $date, 'count' => (int) ($counts[$date] ?? 0)];
         }
+        $categories = $workspace->leads()->select('category')->selectRaw('COUNT(*) as total')->groupBy('category')->get()
+            ->groupBy(fn ($row) => filled($row->category) ? $row->category : 'Uncategorized')
+            ->map(fn ($rows, $name) => ['name' => $name, 'total' => (int) $rows->sum('total')])
+            ->sortByDesc('total')->values();
 
         return [
             'workspace' => $workspace->load('plan'),
@@ -166,7 +170,7 @@ class WorkspaceController extends Controller
             'added' => array_sum(array_column($growth, 'count')),
             'enriched' => $workspace->leads()->whereNotNull('enriched_at')->count(),
             'growth' => $growth,
-            'categories' => $workspace->leads()->selectRaw("COALESCE(NULLIF(category, ''), 'Uncategorized') as name, COUNT(*) as total")->groupByRaw("COALESCE(NULLIF(category, ''), 'Uncategorized')")->orderByDesc('total')->get(),
+            'categories' => $categories,
             'recent_leads' => $workspace->leads()->latest()->orderByDesc('id')->limit(5)->get(),
             'recent_lists' => $workspace->lists()->withCount('leads')->latest()->limit(3)->get(),
         ];
