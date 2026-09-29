@@ -23,7 +23,7 @@ class WorkspaceController extends Controller
     public function leads(Request $r, Workspace $workspace)
     {
         $this->authorizeWorkspace($r, $workspace);
-        $d = $r->validate(['q' => 'nullable|string|max:100', 'category' => 'nullable|string|max:100', 'email_status' => 'nullable|in:all,with_email,without_email', 'sort' => 'nullable|in:name,created_at,average_rating', 'direction' => 'nullable|in:asc,desc', 'per_page' => 'nullable|integer|in:15,30,50']);
+        $d = $r->validate(['q' => 'nullable|string|max:100', 'category' => 'nullable|string|max:100', 'country' => 'nullable|string|max:100', 'min_rating' => 'nullable|numeric|between:0,5', 'email_status' => 'nullable|in:all,with_email,without_email', 'sort' => 'nullable|in:name,created_at,average_rating', 'direction' => 'nullable|in:asc,desc', 'per_page' => 'nullable|integer|in:15,30,50']);
 
         return $this->filteredLeads($workspace, $d)->orderBy($d['sort'] ?? 'created_at', $d['direction'] ?? 'desc')->orderBy('id')->paginate($d['per_page'] ?? 15);
     }
@@ -75,7 +75,7 @@ class WorkspaceController extends Controller
         $this->authorizeWorkspace($r, $workspace, true);
         $data = $r->validate([
             'mode' => 'required|in:selected,filtered,all', 'ids' => 'required_if:mode,selected|array|max:2000', 'ids.*' => 'integer',
-            'q' => 'nullable|string|max:100', 'category' => 'nullable|string|max:100', 'email_status' => 'nullable|in:all,with_email,without_email',
+            'q' => 'nullable|string|max:100', 'category' => 'nullable|string|max:100', 'country' => 'nullable|string|max:100', 'min_rating' => 'nullable|numeric|between:0,5', 'email_status' => 'nullable|in:all,with_email,without_email',
         ]);
         $query = $workspace->leads();
         if ($data['mode'] === 'selected') {
@@ -100,6 +100,8 @@ class WorkspaceController extends Controller
         return $workspace->leads()
             ->when($data['q'] ?? null, fn ($q, $s) => $q->where(fn ($q) => $q->where('name', 'like', "%$s%")->orWhere('city', 'like', "%$s%")->orWhere('email', 'like', "%$s%")))
             ->when($data['category'] ?? null, fn ($q, $c) => $q->where('category', $c))
+            ->when($data['country'] ?? null, fn ($q, $country) => $q->where('country', $country))
+            ->when(isset($data['min_rating']) && $data['min_rating'] !== '', fn ($q) => $q->where('average_rating', '>=', $data['min_rating']))
             ->when(($data['email_status'] ?? 'all') === 'with_email', fn ($q) => $q->whereNotNull('email')->where('email', '!=', ''))
             ->when(($data['email_status'] ?? 'all') === 'without_email', fn ($q) => $q->where(fn ($q) => $q->whereNull('email')->orWhere('email', '')));
     }
@@ -161,6 +163,8 @@ class WorkspaceController extends Controller
             ->groupBy(fn ($row) => filled($row->category) ? $row->category : 'Uncategorized')
             ->map(fn ($rows, $name) => ['name' => $name, 'total' => (int) $rows->sum('total')])
             ->sortByDesc('total')->values();
+        $countries = $workspace->leads()->whereNotNull('country')->where('country', '!=', '')
+            ->select('country as name')->selectRaw('COUNT(*) as total')->groupBy('country')->orderBy('name')->get();
 
         return [
             'workspace' => $workspace->load('plan'),
@@ -171,6 +175,7 @@ class WorkspaceController extends Controller
             'enriched' => $workspace->leads()->whereNotNull('enriched_at')->count(),
             'growth' => $growth,
             'categories' => $categories,
+            'countries' => $countries,
             'recent_leads' => $workspace->leads()->latest()->orderByDesc('id')->limit(5)->get(),
             'recent_lists' => $workspace->lists()->withCount('leads')->latest()->limit(3)->get(),
         ];

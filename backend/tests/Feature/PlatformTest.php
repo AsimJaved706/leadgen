@@ -184,13 +184,14 @@ class PlatformTest extends TestCase
         $path = '/api/workspaces/'.$workspace->id.'/summary';
         $this->getJson($path)->assertOk()->assertJsonPath('leads', 0)->assertJsonPath('added', 0)
             ->assertJsonCount(30, 'growth')->assertJsonCount(0, 'recent_leads')->assertJsonCount(0, 'categories');
-        $workspace->leads()->create(['name' => 'New cafe', 'category' => 'Coffee shop', 'enriched_at' => now()]);
-        $old = $workspace->leads()->create(['name' => 'Older cafe', 'category' => 'Coffee shop']);
+        $workspace->leads()->create(['name' => 'New cafe', 'category' => 'Coffee shop', 'country' => 'Canada', 'enriched_at' => now()]);
+        $old = $workspace->leads()->create(['name' => 'Older cafe', 'category' => 'Coffee shop', 'country' => 'Canada']);
         $old->forceFill(['created_at' => now()->subDays(12)])->save();
         $workspace->lists()->create(['name' => 'My collection']);
         $this->getJson($path.'?days=7')->assertOk()->assertJsonPath('leads', 2)->assertJsonPath('added', 1)
             ->assertJsonPath('enriched', 1)->assertJsonPath('lists', 1)->assertJsonCount(7, 'growth')
             ->assertJsonCount(1, 'categories')->assertJsonPath('categories.0.total', 2)
+            ->assertJsonCount(1, 'countries')->assertJsonPath('countries.0.name', 'Canada')->assertJsonPath('countries.0.total', 2)
             ->assertJsonPath('recent_leads.0.name', 'New cafe')->assertJsonPath('recent_lists.0.name', 'My collection');
         $this->getJson($path.'?days=30')->assertJsonPath('added', 2);
         $this->getJson($path.'?days=999')->assertUnprocessable();
@@ -201,14 +202,14 @@ class PlatformTest extends TestCase
         $user = User::factory()->create();
         $workspace = $this->workspace($user);
         $other = $this->workspace(User::factory()->create());
-        $keep = $workspace->leads()->create(['name' => 'Keep cafe', 'category' => 'Cafe', 'email' => null]);
-        $delete = $workspace->leads()->create(['name' => 'Delete agency', 'category' => 'Agency', 'email' => 'hello@example.test']);
-        $foreign = $other->leads()->create(['name' => 'Foreign agency', 'category' => 'Agency', 'email' => 'private@example.test']);
+        $keep = $workspace->leads()->create(['name' => 'Keep cafe', 'category' => 'Cafe', 'country' => 'Canada', 'average_rating' => 4.9, 'email' => null]);
+        $delete = $workspace->leads()->create(['name' => 'Delete agency', 'category' => 'Agency', 'country' => 'Canada', 'average_rating' => 4.6, 'email' => 'hello@example.test']);
+        $foreign = $other->leads()->create(['name' => 'Foreign agency', 'category' => 'Agency', 'country' => 'Canada', 'average_rating' => 5, 'email' => 'private@example.test']);
         $this->actingAs($user);
 
         $path = '/api/workspaces/'.$workspace->id.'/leads';
-        $this->getJson($path.'?category=Agency&email_status=with_email&per_page=30')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $delete->id);
-        $this->deleteJson($path, ['mode' => 'filtered', 'category' => 'Agency', 'email_status' => 'with_email'])->assertOk()->assertJsonPath('deleted', 1);
+        $this->getJson($path.'?category=Agency&country=Canada&min_rating=4.5&email_status=with_email&per_page=30')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $delete->id);
+        $this->deleteJson($path, ['mode' => 'filtered', 'category' => 'Agency', 'country' => 'Canada', 'min_rating' => 4.5, 'email_status' => 'with_email'])->assertOk()->assertJsonPath('deleted', 1);
         $this->assertDatabaseHas('leads', ['id' => $keep->id]);
         $this->assertDatabaseHas('leads', ['id' => $foreign->id]);
         $this->assertDatabaseMissing('leads', ['id' => $delete->id]);
