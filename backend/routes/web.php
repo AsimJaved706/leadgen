@@ -6,6 +6,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\EmailMarketingController;
 use App\Http\Controllers\EmailOpenController;
 use App\Http\Controllers\EmailUnsubscribeController;
+use App\Http\Controllers\ExtensionController;
 use App\Http\Controllers\LeadImportController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WorkspaceController;
@@ -25,6 +26,9 @@ Route::prefix('api')->group(function () {
         Route::get('/me', fn (Request $r) => $r->user()->load('workspaces.plan'));
         Route::put('/profile', [AuthController::class, 'updateProfile']);
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/extension/token', [ExtensionController::class, 'token'])->middleware('throttle:10,1');
+        Route::get('/extension/context', [ExtensionController::class, 'context'])->middleware('throttle:60,1');
+        Route::post('/extension/workspaces/{workspace}/leads', [ExtensionController::class, 'storeLeads'])->middleware('throttle:20,1');
         Route::get('/workspaces/{workspace}/summary', [WorkspaceController::class, 'summary']);
         Route::get('/workspaces/{workspace}/leads', [WorkspaceController::class, 'leads']);
         Route::post('/workspaces/{workspace}/leads', [WorkspaceController::class, 'createLead']);

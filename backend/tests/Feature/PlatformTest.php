@@ -126,6 +126,48 @@ class PlatformTest extends TestCase
         $this->getJson('/api/workspaces/'.$workspace->id.'/billing')->assertOk()->assertJsonPath('workspace.plan.slug', 'free');
     }
 
+    public function test_extension_token_is_short_lived_and_context_is_server_authoritative(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $response = $this->actingAs($user)->postJson('/api/extension/token', ['extension_id' => str_repeat('a', 32)])
+            ->assertOk()->assertJsonStructure(['token', 'expires_at']);
+        $this->assertTrue(now()->diffInMinutes($response->json('expires_at')) <= 15.1);
+        $token = $response->json('token');
+        $this->withToken($token)->getJson('/api/extension/context')
+            ->assertOk()->assertJsonPath('workspaces.0.id', $workspace->id)
+            ->assertJsonPath('workspaces.0.access.allowed', true)
+            ->assertJsonPath('workspaces.0.plan.slug', 'professional');
+
+        $workspace->update(['plan_id' => Plan::where('slug', 'free')->firstOrFail()->id]);
+        $this->withToken($token)->getJson('/api/extension/context')
+            ->assertOk()->assertJsonPath('workspaces.0.access.allowed', false);
+    }
+
+    public function test_extension_batch_save_requires_membership_subscription_and_matching_list(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $list = $workspace->lists()->create(['name' => 'Extension leads']);
+        $otherUser = User::factory()->create();
+        $otherWorkspace = $this->workspace($otherUser);
+        $otherList = $otherWorkspace->lists()->create(['name' => 'Private']);
+        $token = $user->createToken('test', ['extension:read', 'extension:write', 'extension:refresh'], now()->addMinutes(15))->plainTextToken;
+        $payload = ['list_id' => $list->id, 'leads' => [['name' => 'Acme HVAC', 'place_id' => 'place-1', 'website' => 'https://acme.test']]];
+
+        $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', $payload)
+            ->assertOk()->assertJsonPath('created', 1)->assertJsonPath('saved', 1);
+        $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', $payload)
+            ->assertOk()->assertJsonPath('created', 0)->assertJsonPath('existing', 1);
+        $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', array_merge($payload, ['list_id' => $otherList->id]))->assertNotFound();
+        $this->withToken($token)->postJson('/api/extension/workspaces/'.$otherWorkspace->id.'/leads', array_merge($payload, ['list_id' => $otherList->id]))->assertNotFound();
+        $this->assertDatabaseCount('leads', 1);
+        $this->assertDatabaseHas('lead_list_items', ['lead_list_id' => $list->id]);
+
+        $workspace->update(['plan_id' => Plan::where('slug', 'free')->firstOrFail()->id]);
+        $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', $payload)->assertStatus(402);
+    }
+
     public function test_database_lead_persistence_search_deduplication_and_plan_limit(): void
     {
         $u = User::factory()->create();

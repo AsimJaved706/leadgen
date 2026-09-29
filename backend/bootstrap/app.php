@@ -11,7 +11,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->validateCsrfTokens(except: ['api/stripe/webhook']);
+        $middleware->validateCsrfTokens(except: ['api/stripe/webhook', 'api/extension/context', 'api/extension/workspaces/*/leads']);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Leadspace Maps Extractor</title>
+  <link href="css/style.css" rel="stylesheet">
+  <style>
+    body{width:370px;margin:0;background:#f4f8fd;color:#102f57;font-family:Arial,sans-serif}.ls-popup{padding:18px}.ls-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.ls-head h1{font-size:21px;margin:0}.ls-dot{color:#2867e8}.ls-card{background:#fff;border:1px solid #d5e3f4;border-radius:10px;padding:14px;margin-bottom:12px}.ls-card label{display:block;font-size:11px;font-weight:700;margin:11px 0 6px}.ls-card select,.ls-card input{box-sizing:border-box;width:100%;padding:10px;border:1px solid #cbdcf0;border-radius:7px;background:#fff}.ls-row{display:flex;justify-content:space-between;gap:10px;align-items:center}.ls-muted{font-size:11px;color:#607795;line-height:1.5}.ls-plan{font-size:10px;padding:5px 7px;border-radius:10px;background:#e8f6ee;color:#187746}.ls-button{width:100%;padding:11px;border:0;border-radius:7px;background:#2468e8;color:#fff;font-weight:700;cursor:pointer}.ls-button.secondary{background:#fff;color:#285c9e;border:1px solid #cbdcf0}.ls-button:disabled{opacity:.55;cursor:not-allowed}.ls-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ls-error{padding:10px;background:#fff0ed;color:#a23d34;border-radius:7px;font-size:11px;margin-bottom:10px}.ls-success{padding:10px;background:#eaf8ef;color:#197447;border-radius:7px;font-size:11px;margin-bottom:10px}.hidden{display:none}
+  </style>
+</head>
+<body><main class="ls-popup">
+  <div class="ls-head"><h1>leadspace<span class="ls-dot">.</span></h1><span id="connection" class="ls-muted">Checking…</span></div>
+  <div id="message" class="hidden"></div>
+  <section id="signedout" class="ls-card hidden"><h3>Connect your workspace</h3><p class="ls-muted">Sign in through the Leadspace dashboard. The extension receives a limited 15-minute session.</p><button id="connect" class="ls-button">Sign in and connect</button></section>
+  <section id="signedin" class="hidden">
+    <div class="ls-card"><div class="ls-row"><strong id="userName">Account</strong><span id="plan" class="ls-plan"></span></div><label for="workspace">Workspace</label><select id="workspace"></select><label for="list">Save leads to</label><select id="list"></select><p id="usage" class="ls-muted"></p></div>
+    <div class="ls-card"><label for="query">Google Maps search</label><input id="query" value="coffee shop near New York"><button id="search" class="ls-button" style="margin-top:10px">Search Google Maps</button></div>
+    <div class="ls-actions"><button id="refresh" class="ls-button secondary">Refresh status</button><button id="disconnect" class="ls-button secondary">Disconnect</button></div>
+  </section>
+</main><script src="js/popup.js"></script></body>
+</html>
