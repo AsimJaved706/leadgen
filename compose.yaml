@@ -1,0 +1,64 @@
+services:
+  database:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: leadspace
+      MYSQL_USER: leadspace
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the root .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in the root .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h localhost -u root --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  api:
+    build: ./backend
+    environment: &api-environment
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY:?Set APP_KEY in the root .env}
+      APP_URL: http://localhost:8080
+      DB_CONNECTION: mysql
+      DB_HOST: database
+      DB_PORT: 3306
+      DB_DATABASE: leadspace
+      DB_USERNAME: leadspace
+      DB_PASSWORD: ${DB_PASSWORD}
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      MAIL_MAILER: smtp
+      MAIL_HOST: mail
+      MAIL_PORT: 1025
+    depends_on:
+      database:
+        condition: service_healthy
+    command: sh -c "php artisan migrate --force && php artisan db:seed --class=PlanSeeder --force && php artisan serve --host=0.0.0.0 --port=8000"
+  frontend:
+    build: .
+    ports: ["8080:80"]
+    depends_on: [api]
+  worker:
+    build: ./backend
+    environment: *api-environment
+    command: php artisan queue:work --tries=3 --timeout=90
+    depends_on: [api]
+    restart: on-failure
+  scheduler:
+    build: ./backend
+    environment: *api-environment
+    command: php artisan schedule:work
+    depends_on: [api]
+    restart: on-failure
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: ["redis-data:/data"]
+  mail:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025"]
+volumes:
+  mysql-data:
+  redis-data:

@@ -1,0 +1,42 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { UsersRound, Folder, ArrowDownToLine, Zap, ArrowRight, Plus, MapPin, Globe, Mail, Phone, Star, Database } from 'lucide-react';
+import { api, type Workspace } from './api';
+import './workspace-dashboard.css';
+
+type RecentLead = { id:number;name:string;website:string|null;email:string|null;phone:string|null;city:string|null;category:string|null;average_rating:number|null };
+type Summary = {
+ workspace:Workspace;leads:number;lists:number;members:number;added:number;enriched:number;
+ growth:{date:string;count:number}[];categories:{name:string;total:number}[];
+ recent_leads:RecentLead[];recent_lists:{id:number;name:string;leads_count:number}[];
+};
+const colors=['#3b82f6','#74b1fa','#abd3ff','#a6b7ef','#dce7f5'];
+export function WorkspaceDashboard({workspaceId,name,onNavigate,onAdd}:{workspaceId:number;name:string;onNavigate:(tab:string)=>void;onAdd:()=>void}) {
+ const [days,setDays]=useState(30);
+ const query=useQuery({queryKey:['workspace-summary',workspaceId,days],queryFn:()=>api<Summary>(`/workspaces/${workspaceId}/summary?days=${days}`),retry:false});
+ if(query.isPending)return <div className="platform-card platform-empty">Loading your workspace overview…</div>;
+ if(query.error)return <div className="platform-error" role="alert">{query.error.message}<button onClick={()=>query.refetch()}>Try again</button></div>;
+ const data=query.data!;
+ const limit=data.workspace.plan.limits.leads;
+ const usage=limit?Math.min(100,Math.round(data.leads/limit*100)):0;
+ const max=Math.max(4,...data.growth.map(d=>d.count));
+ const points=data.growth.map((d,i)=>`${40+i*610/(data.growth.length-1)},${155-d.count/max*125}`).join(' ');
+ const categories=data.categories.slice(0,4).map(c=>({...c,total:Number(c.total)}));
+ const remaining=data.categories.slice(4).reduce((sum,c)=>sum+Number(c.total),0);
+ if(remaining)categories.push({name:'Other categories',total:remaining});
+ let cumulative=0;
+ const segments=categories.map((c,i)=>{const start=cumulative;cumulative+=c.total/data.leads*100;return `${colors[i]} ${start}% ${cumulative}%`});
+ return <div className="live-dashboard">
+  <div className="live-dashboard-intro"><p>Good to see you, {name.split(' ')[0]}. Here’s what’s happening with your leads.</p><select aria-label="Reporting period" value={days} onChange={e=>setDays(Number(e.target.value))}><option value={30}>Last 30 days</option><option value={7}>Last 7 days</option></select></div>
+  <div className="stats-grid">{[
+   {label:'Total leads',value:data.leads,caption:`of ${limit.toLocaleString()} available`,Icon:UsersRound},
+   {label:'Leads added',value:data.added,caption:`in the last ${days} days`,Icon:ArrowDownToLine},
+   {label:'Lead lists',value:data.lists,caption:'collections in this workspace',Icon:Folder},
+   {label:'Enriched leads',value:data.enriched,caption:data.leads?`${Math.round(data.enriched/data.leads*100)}% of your total leads`:'No enriched leads yet',Icon:Zap},
+  ].map(({label,value,caption,Icon})=><article className="stat-card" key={label}><div className="stat-label">{label}<span><Icon size={17}/></span></div><div className="stat-main"><strong>{value.toLocaleString()}</strong></div><div className="stat-footer">{caption}</div></article>)}</div>
+  <div className="analytics-grid"><section className="panel"><div className="panel-heading"><div><h2>Lead growth</h2><p>New leads saved each day.</p></div><span className="live-chart-label"><i/>Leads added</span></div><div className="live-growth"><svg viewBox="0 0 680 195" role="img" aria-label={`${data.added} leads added in the last ${days} days`}><defs><linearGradient id="liveGrowthFill" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#60a5fa" stopOpacity=".3"/><stop offset="1" stopColor="#60a5fa" stopOpacity=".02"/></linearGradient></defs>{[0,1,2,3,4].map(i=><g key={i}><line x1="40" x2="650" y1={155-i*31.25} y2={155-i*31.25} stroke="#e2ecfa" strokeDasharray="4 4"/><text x="5" y={159-i*31.25} className="axis-label">{Math.round(max*i/4)}</text></g>)}<polygon points={`40,155 ${points} 650,155`} fill="url(#liveGrowthFill)"/><polyline points={points} stroke="#3b82f6" strokeWidth="2.5" fill="none"/>{data.growth.filter((_,i)=>i===0||i===Math.floor((days-1)/2)||i===days-1).map((d,i)=><text key={d.date} x={40+i*305} y="185" textAnchor={i===0?'start':i===2?'end':'middle'} className="axis-label">{new Date(d.date+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})}</text>)}</svg></div><div className="chart-footer">{data.added?`${data.added.toLocaleString()} new opportunities in this period.`:'Your chart will grow as you add leads. No leads added in this period.'}</div></section>
+  <section className="panel"><div className="panel-heading"><div><h2>Leads by category</h2><p>A snapshot of your opportunities.</p></div></div><div className="donut-wrap"><div className="donut" style={{background:data.leads?`conic-gradient(${segments.join(',')})`:'#e5eefb'}}><div><strong>{data.leads.toLocaleString()}</strong><span>Total leads</span></div></div></div>{categories.length?<div className="category-legend">{categories.map((c,i)=><div key={c.name}><i style={{background:colors[i]}}/><span>{c.name}</span><strong>{c.total.toLocaleString()}</strong><small>{Math.round(c.total/data.leads*100)}%</small></div>)}</div>:<p className="live-category-empty">Categories will appear when you add your first lead.</p>}</section></div>
+  <section className="panel"><div className="panel-heading"><div className="title-line"><h2>Recently added leads</h2><span className="count-badge">Latest additions</span></div><button className="text-button" onClick={()=>onNavigate('Leads')}>View all leads <ArrowRight size={15}/></button></div>{data.recent_leads.length?<div className="table-scroll"><table><thead><tr><th>Business name</th><th>Category</th><th>Location</th><th>Rating</th><th>Contact</th></tr></thead><tbody>{data.recent_leads.map(lead=><tr key={lead.id}><td><strong>{lead.name}</strong>{lead.website&&<a className="cell-subtitle" href={lead.website} target="_blank" rel="noreferrer">{lead.website}</a>}</td><td><span className="category-tag">{lead.category||'Uncategorized'}</span></td><td><span className="location-cell"><MapPin size={13}/>{lead.city||'Not provided'}</span></td><td>{lead.average_rating!=null?<span className="rating-cell"><Star size={12} color="#dca443" fill="#dca443"/>{lead.average_rating}</span>:'—'}</td><td><div className="contact-icons">{lead.website&&<a href={lead.website} aria-label={`Website for ${lead.name}`} target="_blank" rel="noreferrer"><Globe size={14}/></a>}{lead.email&&<a href={`mailto:${lead.email}`} aria-label={`Email ${lead.name}`}><Mail size={14}/></a>}{lead.phone&&<a href={`tel:${lead.phone}`} aria-label={`Call ${lead.name}`}><Phone size={14}/></a>}{!lead.website&&!lead.email&&!lead.phone&&'—'}</div></td></tr>)}</tbody></table></div>:<div className="live-recent-empty"><span><UsersRound size={25}/></span><h2>Your next opportunity starts here</h2><p>Add your first business lead to start building your dashboard.</p><button className="button primary" onClick={onAdd}><Plus size={15}/>Add your first lead</button></div>}</section>
+  <div className="bottom-grid"><section className="panel"><div className="panel-heading"><h2>Your lead lists</h2><button className="text-button" onClick={()=>onNavigate('Lists')}>View all lists <ArrowRight size={14}/></button></div>{data.recent_lists.length?<div className="list-tiles">{data.recent_lists.map(list=><button key={list.id} onClick={()=>onNavigate('Lists')}><span className="folder-icon"><Folder size={20}/></span><strong>{list.name}</strong><small>{list.leads_count} leads <ArrowRight size={13}/></small></button>)}</div>:<div className="live-lists-empty"><Folder size={22}/><p>Keep your outreach organized with your first collection.</p><button className="text-button" onClick={()=>onNavigate('Lists')}>Create a lead list <ArrowRight size={14}/></button></div>}</section><section className="panel live-plan-card"><span className="folder-icon"><Database size={21}/></span><h2>{data.workspace.plan.name} workspace</h2><p>{data.leads.toLocaleString()} of {limit.toLocaleString()} leads stored</p><div className="progress"><i style={{width:`${usage}%`}}/></div><div className="usage-caption"><span>{usage}% of storage used</span><span>{Math.max(0,limit-data.leads).toLocaleString()} available</span></div></section></div>
+ </div>;
+}
