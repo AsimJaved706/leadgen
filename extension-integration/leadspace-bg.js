@@ -1,4 +1,4 @@
-const LEADSPACE_ORIGIN = 'https://yellow-monkey-261650.hostingersite.com';
+const LEADSPACE_ORIGIN = 'https://leads.diligenttechnologies.co';
 
 async function leadspaceStored() {
   return chrome.storage.local.get(['leadspaceToken', 'leadspaceTokenExpiresAt', 'leadspaceWorkspaceId', 'leadspaceListId']);
