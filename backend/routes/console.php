@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Audit;
 use App\Models\Workspace;
 use App\Services\JobFeedSyncService;
+use App\Services\CompanyEmailEnricher;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -62,3 +63,14 @@ Artisan::command('jobs:sync {--workspace=}', function (JobFeedSyncService $servi
 })->purpose('Fetch and enrich jobs from configured free feeds');
 
 Schedule::command('jobs:sync')->dailyAt('02:15')->withoutOverlapping()->onOneServer();
+
+Artisan::command('jobs:enrich {--workspace=} {--limit=25}', function (CompanyEmailEnricher $service) {
+    $query = Workspace::query()->whereNull('suspended_at')->whereHas('plan', fn ($q) => $q->where('slug', '!=', 'free'));
+    if ($id = $this->option('workspace')) $query->whereKey($id);
+    $query->each(function (Workspace $workspace) use ($service) {
+        $result = $service->enrich($workspace, max(1, min(100, (int) $this->option('limit'))));
+        $this->line("Workspace {$workspace->id}: checked {$result['checked']}, found {$result['found']} public emails");
+    });
+})->purpose('Find publicly listed contact emails on employer websites');
+
+Schedule::command('jobs:enrich --limit=25')->dailyAt('03:30')->withoutOverlapping()->onOneServer();

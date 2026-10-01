@@ -78,6 +78,7 @@ class JobsTest extends TestCase
                 'companyWebsite' => 'https://www.acme.test/about', 'location' => 'United States',
                 'type' => 'Full-time', 'applyUrl' => 'https://jobs.example/r-1', 'postedDate' => '2026-10-01',
             ]]]),
+            '*' => Http::response([]),
         ]);
         $user = User::factory()->create();
         $workspace = $this->workspace($user);

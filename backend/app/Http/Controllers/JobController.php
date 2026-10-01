@@ -6,6 +6,7 @@ use App\Models\Job;
 use App\Models\Workspace;
 use App\Support\Audit;
 use App\Services\JobFeedSyncService;
+use App\Services\CompanyEmailEnricher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +63,14 @@ class JobController extends Controller
         $run = $service->sync($workspace);
         Audit::record('jobs.synced', $run->id, ['created' => $run->created_count, 'updated' => $run->updated_count, 'failed' => $run->failed_count], $workspace->id);
         return $run;
+    }
+
+    public function enrich(Request $request, Workspace $workspace, CompanyEmailEnricher $service): array
+    {
+        $this->authorizeWorkspace($request, $workspace, true);
+        $result = $service->enrich($workspace, 25);
+        Audit::record('jobs.emails_enriched', null, $result, $workspace->id);
+        return $result;
     }
 
     public function store(Request $request, Workspace $workspace)

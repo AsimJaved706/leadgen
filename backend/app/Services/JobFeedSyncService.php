@@ -17,11 +17,23 @@ class JobFeedSyncService
         $created = $updated = $failed = 0;
         $sources = [];
         try {
-            foreach (['Himalayas' => $this->himalayas($perSource), 'Remote Landers' => $this->remoteLanders($perSource)] as $source => $rows) {
+            foreach ([
+                'Himalayas' => $this->himalayas($perSource),
+                'Remote Landers' => $this->remoteLanders($perSource),
+                'Jobicy' => $this->jobicy($perSource),
+                'Remotive' => $this->remotive($perSource),
+                'Remote OK' => $this->remoteOk($perSource),
+            ] as $source => $rows) {
                 $sourceCreated = $sourceUpdated = $sourceFailed = 0;
                 foreach ($rows as $raw) {
                     try {
-                        $data = $source === 'Himalayas' ? $this->mapHimalayas($raw) : $this->mapRemoteLanders($raw);
+                        $data = match ($source) {
+                            'Himalayas' => $this->mapHimalayas($raw),
+                            'Remote Landers' => $this->mapRemoteLanders($raw),
+                            'Jobicy' => $this->mapJobicy($raw),
+                            'Remotive' => $this->mapRemotive($raw),
+                            'Remote OK' => $this->mapRemoteOk($raw),
+                        };
                         $hash = hash('sha256', Str::lower($source.'|'.$data['source_job_id']));
                         $existing = $workspace->jobs()->where('dedupe_hash', $hash)->first();
                         if ($existing) {
@@ -70,6 +82,27 @@ class JobFeedSyncService
         return array_slice($response['jobs'] ?? [], 0, $limit);
     }
 
+    private function jobicy(int $limit): array
+    {
+        $response = Http::acceptJson()->withUserAgent('Leadspace Job Sync/1.0')->timeout(25)->retry(2, 500)
+            ->get('https://jobicy.com/api/v2/remote-jobs', ['count' => min($limit, 50)])->throw()->json();
+        return array_slice($response['jobs'] ?? [], 0, $limit);
+    }
+
+    private function remotive(int $limit): array
+    {
+        $response = Http::acceptJson()->withUserAgent('Leadspace Job Sync/1.0')->timeout(25)->retry(2, 500)
+            ->get('https://remotive.com/api/remote-jobs', ['limit' => min($limit, 100)])->throw()->json();
+        return array_slice($response['jobs'] ?? [], 0, $limit);
+    }
+
+    private function remoteOk(int $limit): array
+    {
+        $response = Http::acceptJson()->withUserAgent('Leadspace Job Sync/1.0 (support@diligenttechnologies.co)')->timeout(25)->retry(2, 500)
+            ->get('https://remoteok.com/api')->throw()->json();
+        return array_slice(array_values(array_filter($response ?? [], fn ($row) => isset($row['id'], $row['position']))), 0, $limit);
+    }
+
     private function mapHimalayas(array $job): array
     {
         $description = $job['description'] ?? $job['excerpt'] ?? null;
@@ -106,6 +139,49 @@ class JobFeedSyncService
             'email_discovery_status' => $email ? 'published' : 'not_found', 'email_source' => $email ? 'job_description' : null,
             'posted_at' => $job['postedDate'] ?? null, 'scraped_at' => now(), 'enriched_at' => now(),
             'status' => 'new', 'metadata' => $job,
+        ];
+    }
+
+    private function mapJobicy(array $job): array
+    {
+        return $this->remoteJob('Jobicy', (string) ($job['id'] ?? $job['jobSlug'] ?? ''), [
+            'url' => $job['url'] ?? null, 'title' => $job['jobTitle'] ?? null, 'company' => $job['companyName'] ?? null,
+            'location' => $job['jobGeo'] ?? null, 'type' => implode(', ', $job['jobType'] ?? []), 'level' => $job['jobLevel'] ?? null,
+            'description' => $job['jobDescription'] ?? $job['jobExcerpt'] ?? null, 'date' => $job['pubDate'] ?? null,
+        ], $job);
+    }
+
+    private function mapRemotive(array $job): array
+    {
+        return $this->remoteJob('Remotive', (string) ($job['id'] ?? ''), [
+            'url' => $job['url'] ?? null, 'title' => $job['title'] ?? null, 'company' => $job['company_name'] ?? null,
+            'location' => $job['candidate_required_location'] ?? null, 'type' => $job['job_type'] ?? null,
+            'description' => $job['description'] ?? null, 'date' => $job['publication_date'] ?? null,
+        ], $job);
+    }
+
+    private function mapRemoteOk(array $job): array
+    {
+        return $this->remoteJob('Remote OK', (string) ($job['id'] ?? ''), [
+            'url' => $job['url'] ?? ($job['apply_url'] ?? null), 'title' => $job['position'] ?? null,
+            'company' => $job['company'] ?? null, 'location' => $job['location'] ?? 'Remote',
+            'description' => $job['description'] ?? null, 'date' => $job['date'] ?? null,
+        ], $job);
+    }
+
+    private function remoteJob(string $source, string $id, array $fields, array $raw): array
+    {
+        $description = $fields['description'] ?? null;
+        $email = $this->publishedEmail($description);
+        return [
+            'source_platform' => $source, 'source_job_id' => $id ?: md5(json_encode($raw)),
+            'source_url' => $fields['url'], 'title' => $fields['title'] ?: 'Untitled job',
+            'company_name' => $fields['company'], 'location' => $fields['location'], 'country' => $fields['location'],
+            'workplace_type' => 'remote', 'employment_type' => $fields['type'] ?? null,
+            'seniority_level' => $fields['level'] ?? null, 'description' => $description,
+            'contact_email' => $email, 'email_discovery_status' => $email ? 'published' : 'not_found',
+            'email_source' => $email ? 'job_description' : null, 'posted_at' => $fields['date'] ?? null,
+            'scraped_at' => now(), 'enriched_at' => now(), 'status' => 'new', 'metadata' => $raw,
         ];
     }
 

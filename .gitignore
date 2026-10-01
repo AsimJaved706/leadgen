@@ -17,3 +17,6 @@ landing-mobile-check.png
 journey-*.png
 *.log
 *.zip
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat

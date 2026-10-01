@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Papa from 'papaparse';
-import { BriefcaseBusiness, Building2, CalendarDays, Check, Eye, ExternalLink, FileUp, Globe2, Mail, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { BriefcaseBusiness, Building2, CalendarDays, Check, Eye, ExternalLink, FileUp, Globe2, Mail, MailSearch, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { api, type Page } from './api';
 import './jobs.css';
 
@@ -36,9 +36,10 @@ export function Jobs({workspaceId}:{workspaceId:number}){
  async function changeStatus(job:Job,next:string){setError('');try{await api(`/workspaces/${workspaceId}/jobs/${job.id}`,'PATCH',{status:next});await refresh()}catch(e){setError((e as Error).message)}}
  async function remove(){if(!deleting)return;setBusy(true);setError('');try{await api(`/workspaces/${workspaceId}/jobs/${deleting.id}`,'DELETE');setDeleting(null);setViewing(null);setNotice('Job removed from the workspace.');await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function sync(){setBusy(true);setError('');setNotice('');try{const result=await api<SyncRun>(`/workspaces/${workspaceId}/jobs/sync`,'POST');setNotice(`Daily feeds synced: ${result.created_count} new · ${result.updated_count} refreshed · ${result.failed_count} failed`);setPage(1);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function enrich(){setBusy(true);setError('');setNotice('');try{const result=await api<{checked:number;found:number}>(`/workspaces/${workspaceId}/jobs/enrich`,'POST');setNotice(`Checked ${result.checked} employer websites · found ${result.found} public emails`);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
 
  return <div className="jobs-page">
-  <div className="jobs-actions"><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>{busy?'Syncing feeds…':'Sync now'}</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button primary" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
+  <div className="jobs-actions"><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>Sync jobs</button><button className="button" disabled={busy} onClick={enrich}><MailSearch size={16}/>Find emails</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button primary" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
   {notice&&<div className="platform-notice"><Check size={15}/>{notice}<button className="notice-close" onClick={()=>setNotice('')}><X size={14}/></button></div>}
   {error&&<div className="platform-error">{error}</div>}
   <section className="jobs-summary">
