@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Job;
 use App\Models\Workspace;
 use App\Support\Audit;
+use App\Services\JobFeedSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -46,7 +47,21 @@ class JobController extends Controller
             ->select($column)->selectRaw('COUNT(*) as total')->groupBy($column)->orderBy($column)->get();
 
         return ['sources' => $values('source_platform'), 'countries' => $values('country'),
-            'workplace_types' => $values('workplace_type'), 'statuses' => self::STATUSES];
+            'workplace_types' => $values('workplace_type'), 'statuses' => self::STATUSES,
+            'with_email' => $workspace->jobs()->whereNotNull('contact_email')->count(),
+            'with_domain' => $workspace->jobs()->whereNotNull('company_domain')->count(),
+            'latest_sync' => $workspace->jobSyncRuns()->latest('started_at')->first(),
+        ];
+    }
+
+    public function sync(Request $request, Workspace $workspace, JobFeedSyncService $service)
+    {
+        $this->authorizeWorkspace($request, $workspace, true);
+        $last = $workspace->jobSyncRuns()->where('status', 'completed')->latest('started_at')->first();
+        abort_if($last && $last->started_at->gt(now()->subMinutes(10)), 429, 'Jobs were synced recently. Please wait before running another sync.');
+        $run = $service->sync($workspace);
+        Audit::record('jobs.synced', $run->id, ['created' => $run->created_count, 'updated' => $run->updated_count, 'failed' => $run->failed_count], $workspace->id);
+        return $run;
     }
 
     public function store(Request $request, Workspace $workspace)

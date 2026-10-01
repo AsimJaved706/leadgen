@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class JobsTest extends TestCase
@@ -61,5 +62,30 @@ class JobsTest extends TestCase
             ->assertOk()->assertJsonPath('status', 'applied');
         $workspace->update(['plan_id' => Plan::where('slug', 'free')->value('id')]);
         $this->getJson("/api/workspaces/{$workspace->id}/jobs")->assertPaymentRequired();
+    }
+
+    public function test_free_feeds_sync_daily_fields_domains_and_published_emails(): void
+    {
+        Http::fake([
+            'himalayas.app/*' => Http::response(['jobs' => [[
+                'guid' => 'h-1', 'title' => 'Laravel Developer', 'companyName' => 'Example Labs',
+                'locationRestrictions' => ['Canada'], 'employmentType' => 'Full Time',
+                'description' => '<p>Email careers@examplelabs.com to apply.</p>',
+                'applicationLink' => 'https://himalayas.app/jobs/h-1', 'pubDate' => 1790812800,
+            ]]]),
+            'remotelanders.com/*' => Http::response(['jobs' => [[
+                'slug' => 'r-1', 'title' => 'React Engineer', 'company' => 'Acme',
+                'companyWebsite' => 'https://www.acme.test/about', 'location' => 'United States',
+                'type' => 'Full-time', 'applyUrl' => 'https://jobs.example/r-1', 'postedDate' => '2026-10-01',
+            ]]]),
+        ]);
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/sync")
+            ->assertOk()->assertJsonPath('created_count', 2)->assertJsonPath('status', 'completed');
+        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'h-1', 'contact_email' => 'careers@examplelabs.com', 'email_discovery_status' => 'published']);
+        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'r-1', 'company_domain' => 'acme.test', 'email_discovery_status' => 'not_found']);
+        $this->getJson("/api/workspaces/{$workspace->id}/jobs/filters")
+            ->assertOk()->assertJsonPath('with_email', 1)->assertJsonPath('with_domain', 1)->assertJsonPath('latest_sync.status', 'completed');
     }
 }

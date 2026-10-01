@@ -42,6 +42,7 @@ Route::prefix('api')->group(function () {
         Route::post('/workspaces/{workspace}/lists/{list}/leads', [WorkspaceController::class, 'addLeadsToList']);
         Route::get('/workspaces/{workspace}/jobs', [JobController::class, 'index']);
         Route::get('/workspaces/{workspace}/jobs/filters', [JobController::class, 'filters']);
+        Route::post('/workspaces/{workspace}/jobs/sync', [JobController::class, 'sync'])->middleware('throttle:3,10');
         Route::post('/workspaces/{workspace}/jobs', [JobController::class, 'store']);
         Route::post('/workspaces/{workspace}/jobs/import', [JobController::class, 'import'])->middleware('throttle:20,1');
         Route::get('/workspaces/{workspace}/jobs/{job}', [JobController::class, 'show']);

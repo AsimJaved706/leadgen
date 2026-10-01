@@ -17,6 +17,7 @@ class Job extends Model
             'posted_at' => 'datetime',
             'expires_at' => 'datetime',
             'scraped_at' => 'datetime',
+            'enriched_at' => 'datetime',
         ];
     }
 

@@ -53,6 +53,11 @@ class Workspace extends Model
         return $this->hasMany(Job::class);
     }
 
+    public function jobSyncRuns()
+    {
+        return $this->hasMany(JobSyncRun::class);
+    }
+
     public function emailSetting()
     {
         return $this->hasOne(EmailSetting::class);

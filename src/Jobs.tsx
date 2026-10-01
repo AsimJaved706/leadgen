@@ -1,24 +1,26 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Papa from 'papaparse';
-import { BriefcaseBusiness, Building2, CalendarDays, Check, Eye, ExternalLink, FileUp, MapPin, Plus, Search, Trash2, X } from 'lucide-react';
+import { BriefcaseBusiness, Building2, CalendarDays, Check, Eye, ExternalLink, FileUp, Globe2, Mail, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { api, type Page } from './api';
 import './jobs.css';
 
 type Job = {
   id:number; source_platform:string; source_job_id?:string|null; source_url?:string|null; title:string;
-  company_name?:string|null; company_website?:string|null; location?:string|null; country?:string|null;
+  company_name?:string|null; company_website?:string|null; company_domain?:string|null; location?:string|null; country?:string|null;
   workplace_type?:string|null; employment_type?:string|null; seniority_level?:string|null;
   salary_min?:number|null; salary_max?:number|null; salary_currency?:string|null; salary_period?:string|null;
-  description?:string|null; requirements?:string|null; contact_name?:string|null; contact_email?:string|null;
+  description?:string|null; requirements?:string|null; contact_name?:string|null; contact_email?:string|null; email_discovery_status?:string;
   status:string; posted_at?:string|null; expires_at?:string|null; created_at:string; metadata?:Record<string,unknown>|null;
 };
 type FilterValue={source_platform?:string;country?:string;workplace_type?:string;total:number};
-type Filters={sources:FilterValue[];countries:FilterValue[];workplace_types:FilterValue[];statuses:string[]};
+type SyncRun={id:number;status:string;created_count:number;updated_count:number;failed_count:number;started_at:string;finished_at?:string|null};
+type Filters={sources:FilterValue[];countries:FilterValue[];workplace_types:FilterValue[];statuses:string[];with_email:number;with_domain:number;latest_sync?:SyncRun|null};
 
 const statuses=['new','saved','applied','interview','rejected','closed'];
 const label=(value:string)=>value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 const date=(value?:string|null)=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(new Date(value)):'Not provided';
+const plainText=(value:string)=>new DOMParser().parseFromString(value,'text/html').body.textContent||'';
 
 export function Jobs({workspaceId}:{workspaceId:number}){
  const cache=useQueryClient();
@@ -33,16 +35,19 @@ export function Jobs({workspaceId}:{workspaceId:number}){
 
  async function changeStatus(job:Job,next:string){setError('');try{await api(`/workspaces/${workspaceId}/jobs/${job.id}`,'PATCH',{status:next});await refresh()}catch(e){setError((e as Error).message)}}
  async function remove(){if(!deleting)return;setBusy(true);setError('');try{await api(`/workspaces/${workspaceId}/jobs/${deleting.id}`,'DELETE');setDeleting(null);setViewing(null);setNotice('Job removed from the workspace.');await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function sync(){setBusy(true);setError('');setNotice('');try{const result=await api<SyncRun>(`/workspaces/${workspaceId}/jobs/sync`,'POST');setNotice(`Daily feeds synced: ${result.created_count} new · ${result.updated_count} refreshed · ${result.failed_count} failed`);setPage(1);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
 
  return <div className="jobs-page">
-  <div className="jobs-actions"><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button primary" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
+  <div className="jobs-actions"><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>{busy?'Syncing feeds…':'Sync now'}</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button primary" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
   {notice&&<div className="platform-notice"><Check size={15}/>{notice}<button className="notice-close" onClick={()=>setNotice('')}><X size={14}/></button></div>}
   {error&&<div className="platform-error">{error}</div>}
   <section className="jobs-summary">
    <article><BriefcaseBusiness size={22}/><span><strong>{jobs.data?.total||0}</strong>Total jobs</span></article>
    <article><Building2 size={22}/><span><strong>{filters.data?.sources.length||0}</strong>Connected sources</span></article>
-   <article><Check size={22}/><span><strong>{jobs.data?.data.filter(j=>j.status==='applied').length||0}</strong>Applied on this page</span></article>
+   <article><Globe2 size={22}/><span><strong>{filters.data?.with_domain||0}</strong>Company domains</span></article>
+   <article><Mail size={22}/><span><strong>{filters.data?.with_email||0}</strong>Published emails</span></article>
   </section>
+  <div className="job-sync-note"><RefreshCw size={14}/>Automatic sync runs daily at 2:15 AM. {filters.data?.latest_sync?`Last sync: ${date(filters.data.latest_sync.started_at)} · ${filters.data.latest_sync.created_count} new jobs.`:'Run the first sync to load free job feeds.'}</div>
   <div className="jobs-toolbar">
    <label className="platform-search"><Search size={17}/><input aria-label="Search jobs" placeholder="Search title, company, or location..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></label>
    <select aria-label="Source" value={source} onChange={e=>{setSource(e.target.value);setPage(1)}}><option value="">All sources</option>{filters.data?.sources.map(v=><option key={v.source_platform} value={v.source_platform}>{v.source_platform} ({v.total})</option>)}</select>
@@ -54,7 +59,7 @@ export function Jobs({workspaceId}:{workspaceId:number}){
   <section className="platform-card jobs-table-card">
    {jobs.isLoading?<div className="jobs-loading">Loading jobs…</div>:jobs.isError?<div className="platform-empty"><h2>Jobs could not be loaded</h2><p>{(jobs.error as Error).message}</p><button className="button" onClick={()=>jobs.refetch()}>Try again</button></div>:jobs.data?.data.length?<>
     <div className="table-scroll"><table className="platform-table jobs-table"><thead><tr><th>Job</th><th>Source</th><th>Location</th><th>Posted</th><th>Status</th><th>Actions</th></tr></thead><tbody>{jobs.data.data.map(job=><tr key={job.id}>
-     <td><strong>{job.title}</strong><small className="cell-subtitle">{job.company_name||'Company not provided'}{job.employment_type?` · ${job.employment_type}`:''}</small></td>
+     <td><strong>{job.title}</strong><small className="cell-subtitle">{job.company_name||'Company not provided'}{job.employment_type?` · ${job.employment_type}`:''}</small><span className="job-enrichment">{job.company_domain&&<span><Globe2 size={11}/>{job.company_domain}</span>}{job.contact_email&&<span className="has-email"><Mail size={11}/>Email found</span>}</span></td>
      <td><span className="job-source">{job.source_platform}</span></td>
      <td>{job.location||job.country||'—'}<small className="cell-subtitle">{label(job.workplace_type||'unknown')}</small></td>
      <td>{date(job.posted_at)}</td>
@@ -84,7 +89,7 @@ function JobImporter({close,run,busy,error}:{close:()=>void;run:(source:string,r
 
 function JobDetails({job,close}:{job:Job;close:()=>void}){
  const salary=job.salary_min||job.salary_max?`${job.salary_currency||''} ${job.salary_min?.toLocaleString()||'—'} – ${job.salary_max?.toLocaleString()||'—'}${job.salary_period?` / ${job.salary_period}`:''}`:'Not provided';
- return <Modal title="Job details" close={close}><div className="job-detail-head"><span><BriefcaseBusiness size={25}/></span><div><h2>{job.title}</h2><p>{job.company_name||'Company not provided'}</p></div>{job.source_url&&<a className="button" href={job.source_url} target="_blank" rel="noreferrer">View listing <ExternalLink size={14}/></a>}</div><div className="job-detail-grid"><Info icon={<Building2/>} title="Source" value={job.source_platform}/><Info icon={<MapPin/>} title="Location" value={[job.location,job.country].filter(Boolean).join(', ')||'Not provided'}/><Info icon={<CalendarDays/>} title="Posted" value={date(job.posted_at)}/><Info icon={<BriefcaseBusiness/>} title="Employment" value={[label(job.workplace_type||'unknown'),job.employment_type,job.seniority_level].filter(Boolean).join(' · ')}/><Info title="Salary" value={salary}/><Info title="Contact" value={[job.contact_name,job.contact_email].filter(Boolean).join(' · ')||'Not provided'}/></div>{job.description&&<section className="job-copy"><h3>Description</h3><p>{job.description}</p></section>}{job.requirements&&<section className="job-copy"><h3>Requirements</h3><p>{job.requirements}</p></section>}</Modal>
+ return <Modal title="Job details" close={close}><div className="job-detail-head"><span><BriefcaseBusiness size={25}/></span><div><h2>{job.title}</h2><p>{job.company_name||'Company not provided'}</p></div>{job.source_url&&<a className="button" href={job.source_url} target="_blank" rel="noreferrer">View listing <ExternalLink size={14}/></a>}</div><div className="job-detail-grid"><Info icon={<Building2/>} title="Source" value={job.source_platform}/><Info icon={<MapPin/>} title="Location" value={[job.location,job.country].filter(Boolean).join(', ')||'Not provided'}/><Info icon={<CalendarDays/>} title="Posted" value={date(job.posted_at)}/><Info icon={<BriefcaseBusiness/>} title="Employment" value={[label(job.workplace_type||'unknown'),job.employment_type,job.seniority_level].filter(Boolean).join(' · ')}/><Info title="Salary" value={salary}/><Info icon={<Globe2/>} title="Company domain" value={job.company_domain||'Not found'}/><Info icon={<Mail/>} title="Published contact email" value={job.contact_email||'Not found'}/><Info title="Email discovery" value={label(job.email_discovery_status||'not checked')}/></div>{job.description&&<section className="job-copy"><h3>Description</h3><p>{plainText(job.description)}</p></section>}{job.requirements&&<section className="job-copy"><h3>Requirements</h3><p>{job.requirements}</p></section>}</Modal>
 }
 function Info({icon,title,value}:{icon?:ReactNode;title:string;value:string}){return <div className="job-info">{icon&&<span>{icon}</span>}<small>{title}</small><strong>{value}</strong></div>}
 function Modal({title,children,close}:{title:string;children:ReactNode;close:()=>void}){return <dialog className="platform-dialog jobs-dialog" ref={el=>{if(el&&!el.open)el.showModal()}} onCancel={e=>{e.preventDefault();close()}}><div className="modal-header"><h2>{title}</h2><button aria-label="Close dialog" className="icon-button" onClick={close}><X size={20}/></button></div>{children}</dialog>}

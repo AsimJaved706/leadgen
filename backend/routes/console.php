@@ -4,6 +4,8 @@ use App\Jobs\PrepareEmailCampaign;
 use App\Models\EmailCampaign;
 use App\Models\User;
 use App\Support\Audit;
+use App\Models\Workspace;
+use App\Services\JobFeedSyncService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -48,3 +50,15 @@ Schedule::call(function () {
     EmailCampaign::where('status', 'scheduled')->where('scheduled_at', '<=', now())
         ->orderBy('id')->limit(100)->pluck('id')->each(fn ($id) => PrepareEmailCampaign::dispatch($id));
 })->name('dispatch-due-email-campaigns')->everyMinute()->withoutOverlapping();
+
+Artisan::command('jobs:sync {--workspace=}', function (JobFeedSyncService $service) {
+    $query = Workspace::query()->whereNull('suspended_at')->whereHas('plan', fn ($q) => $q->where('slug', '!=', 'free'));
+    if ($id = $this->option('workspace')) $query->whereKey($id);
+    $query->each(function (Workspace $workspace) use ($service) {
+        $this->info("Syncing jobs for workspace {$workspace->id}: {$workspace->name}");
+        $run = $service->sync($workspace);
+        $this->line("Created {$run->created_count}, updated {$run->updated_count}, failed {$run->failed_count}");
+    });
+})->purpose('Fetch and enrich jobs from configured free feeds');
+
+Schedule::command('jobs:sync')->dailyAt('02:15')->withoutOverlapping()->onOneServer();
