@@ -29,6 +29,12 @@ class ProfessionalEmailTemplates
             self::template('Meeting Request', '15 minutes for {{lead.name}}?', 'Would next week work?', 'I would value the opportunity to learn more about your goals at {{lead.name}}.', 'I can share a few practical ideas based on your market in {{lead.city}} and show how similar teams organize their lead generation.', 'Are you available for a short call next week?'),
             self::template('Re-engagement', 'Still relevant for {{lead.name}}?', 'Should I close the loop?', 'I know priorities change, so I wanted to check in one final time.', 'If improving prospecting or outreach is still on your roadmap, I would be happy to share a concise plan for {{lead.name}}.', 'If the timing is not right, simply let me know and I will close the loop.'),
             self::fullStackDeveloperApplication(),
+            self::simpleTemplate('Simple Introduction', 'Quick introduction', "Hi {{lead.name}},\n\nI came across your business and wanted to introduce myself. We help companies simplify lead generation and outreach.\n\nWould you be open to a quick conversation?\n\nBest regards,\nYour name"),
+            self::simpleTemplate('Local Business Outreach', 'A quick question about {{lead.name}}', "Hi {{lead.name}},\n\nI found {{lead.name}} while researching businesses in {{lead.city}}. I wanted to ask whether finding more qualified customers is currently a priority for your team.\n\nIf so, I would be happy to share a few ideas.\n\nBest regards,\nYour name"),
+            self::simpleTemplate('Simple Service Offer', 'Could we help {{lead.name}}?', "Hi {{lead.name}},\n\nWe help {{lead.category}} businesses find and contact suitable prospects without spending hours on manual research.\n\nWould you like me to send a short overview of how it works?\n\nBest regards,\nYour name"),
+            self::simpleTemplate('Quick Question', 'Quick question, {{lead.name}}', "Hi {{lead.name}},\n\nAre you currently looking for a simpler way to organize leads and manage outreach?\n\nI may have something useful for {{lead.name}}. Would a short introduction be helpful?\n\nBest regards,\nYour name"),
+            self::simpleTemplate('Short Follow-Up', 'Following up', "Hi {{lead.name}},\n\nI wanted to follow up on my previous message in case it was missed.\n\nWould you be available for a brief conversation this week?\n\nBest regards,\nYour name"),
+            self::simpleTemplate('Final Check-In', 'Should I close the loop?', "Hi {{lead.name}},\n\nThis is my final follow-up. If improving lead generation is relevant right now, I would be glad to share more information.\n\nIf the timing is not right, no problem at all.\n\nBest regards,\nYour name"),
         ];
     }
 
@@ -48,5 +54,15 @@ class ProfessionalEmailTemplates
         $text = $heading."\n\n".$intro."\n\n".$value."\n\n".$cta."\n\nBest regards,\nYour team";
 
         return compact('name', 'subject') + ['html_body' => $html, 'text_body' => $text];
+    }
+
+    private static function simpleTemplate(string $name, string $subject, string $text): array
+    {
+        $paragraphs = array_map(
+            fn (string $paragraph) => '<p>'.nl2br(htmlspecialchars($paragraph, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')).'</p>',
+            preg_split('/\n{2,}/', trim($text))
+        );
+
+        return compact('name', 'subject') + ['html_body' => implode('', $paragraphs), 'text_body' => $text];
     }
 }

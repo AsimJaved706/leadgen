@@ -42,8 +42,9 @@ class PlatformTest extends TestCase
         $u = User::first();
         $this->assertTrue(Hash::check('StrongPassword123!', $u->password));
         $this->assertSame('owner', $u->workspaces()->first()->pivot->role);
-        $this->assertSame(6, $u->workspaces()->first()->emailTemplates()->count());
+        $this->assertSame(12, $u->workspaces()->first()->emailTemplates()->count());
         $this->assertDatabaseHas('email_templates', ['workspace_id' => $u->workspaces()->first()->id, 'name' => 'Professional Introduction']);
+        $this->assertDatabaseHas('email_templates', ['workspace_id' => $u->workspaces()->first()->id, 'name' => 'Simple Introduction']);
         $this->getJson('/api/me')->assertOk();
         $this->getJson('/api/admin/users')->assertForbidden();
     }
