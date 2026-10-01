@@ -1,0 +1,90 @@
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Papa from 'papaparse';
+import { BriefcaseBusiness, Building2, CalendarDays, Check, Eye, ExternalLink, FileUp, MapPin, Plus, Search, Trash2, X } from 'lucide-react';
+import { api, type Page } from './api';
+import './jobs.css';
+
+type Job = {
+  id:number; source_platform:string; source_job_id?:string|null; source_url?:string|null; title:string;
+  company_name?:string|null; company_website?:string|null; location?:string|null; country?:string|null;
+  workplace_type?:string|null; employment_type?:string|null; seniority_level?:string|null;
+  salary_min?:number|null; salary_max?:number|null; salary_currency?:string|null; salary_period?:string|null;
+  description?:string|null; requirements?:string|null; contact_name?:string|null; contact_email?:string|null;
+  status:string; posted_at?:string|null; expires_at?:string|null; created_at:string; metadata?:Record<string,unknown>|null;
+};
+type FilterValue={source_platform?:string;country?:string;workplace_type?:string;total:number};
+type Filters={sources:FilterValue[];countries:FilterValue[];workplace_types:FilterValue[];statuses:string[]};
+
+const statuses=['new','saved','applied','interview','rejected','closed'];
+const label=(value:string)=>value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+const date=(value?:string|null)=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(new Date(value)):'Not provided';
+
+export function Jobs({workspaceId}:{workspaceId:number}){
+ const cache=useQueryClient();
+ const [page,setPage]=useState(1),[perPage,setPerPage]=useState(15),[search,setSearch]=useState(''),[source,setSource]=useState(''),[country,setCountry]=useState(''),[workplace,setWorkplace]=useState(''),[status,setStatus]=useState('');
+ const [viewing,setViewing]=useState<Job|null>(null),[creating,setCreating]=useState(false),[importing,setImporting]=useState(false),[deleting,setDeleting]=useState<Job|null>(null);
+ const [notice,setNotice]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const params=useMemo(()=>new URLSearchParams({page:String(page),per_page:String(perPage),...(search&&{q:search}),...(source&&{source}),...(country&&{country}),...(workplace&&{workplace_type:workplace}),...(status&&{status})}).toString(),[page,perPage,search,source,country,workplace,status]);
+ const jobs=useQuery({queryKey:['jobs',workspaceId,params],queryFn:()=>api<Page<Job>>(`/workspaces/${workspaceId}/jobs?${params}`),enabled:!!workspaceId});
+ const filters=useQuery({queryKey:['job-filters',workspaceId],queryFn:()=>api<Filters>(`/workspaces/${workspaceId}/jobs/filters`),enabled:!!workspaceId});
+ const refresh=async()=>Promise.all([cache.invalidateQueries({queryKey:['jobs',workspaceId]}),cache.invalidateQueries({queryKey:['job-filters',workspaceId]})]);
+ const clear=()=>{setSearch('');setSource('');setCountry('');setWorkplace('');setStatus('');setPage(1)};
+
+ async function changeStatus(job:Job,next:string){setError('');try{await api(`/workspaces/${workspaceId}/jobs/${job.id}`,'PATCH',{status:next});await refresh()}catch(e){setError((e as Error).message)}}
+ async function remove(){if(!deleting)return;setBusy(true);setError('');try{await api(`/workspaces/${workspaceId}/jobs/${deleting.id}`,'DELETE');setDeleting(null);setViewing(null);setNotice('Job removed from the workspace.');await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+
+ return <div className="jobs-page">
+  <div className="jobs-actions"><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button primary" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
+  {notice&&<div className="platform-notice"><Check size={15}/>{notice}<button className="notice-close" onClick={()=>setNotice('')}><X size={14}/></button></div>}
+  {error&&<div className="platform-error">{error}</div>}
+  <section className="jobs-summary">
+   <article><BriefcaseBusiness size={22}/><span><strong>{jobs.data?.total||0}</strong>Total jobs</span></article>
+   <article><Building2 size={22}/><span><strong>{filters.data?.sources.length||0}</strong>Connected sources</span></article>
+   <article><Check size={22}/><span><strong>{jobs.data?.data.filter(j=>j.status==='applied').length||0}</strong>Applied on this page</span></article>
+  </section>
+  <div className="jobs-toolbar">
+   <label className="platform-search"><Search size={17}/><input aria-label="Search jobs" placeholder="Search title, company, or location..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></label>
+   <select aria-label="Source" value={source} onChange={e=>{setSource(e.target.value);setPage(1)}}><option value="">All sources</option>{filters.data?.sources.map(v=><option key={v.source_platform} value={v.source_platform}>{v.source_platform} ({v.total})</option>)}</select>
+   <select aria-label="Country" value={country} onChange={e=>{setCountry(e.target.value);setPage(1)}}><option value="">All countries</option>{filters.data?.countries.map(v=><option key={v.country} value={v.country}>{v.country} ({v.total})</option>)}</select>
+   <select aria-label="Workplace type" value={workplace} onChange={e=>{setWorkplace(e.target.value);setPage(1)}}><option value="">All workplace types</option>{filters.data?.workplace_types.map(v=><option key={v.workplace_type} value={v.workplace_type}>{label(v.workplace_type||'unknown')} ({v.total})</option>)}</select>
+   <select aria-label="Application status" value={status} onChange={e=>{setStatus(e.target.value);setPage(1)}}><option value="">All statuses</option>{statuses.map(v=><option key={v} value={v}>{label(v)}</option>)}</select>
+   {(search||source||country||workplace||status)&&<button className="button" onClick={clear}>Clear</button>}
+  </div>
+  <section className="platform-card jobs-table-card">
+   {jobs.isLoading?<div className="jobs-loading">Loading jobs…</div>:jobs.isError?<div className="platform-empty"><h2>Jobs could not be loaded</h2><p>{(jobs.error as Error).message}</p><button className="button" onClick={()=>jobs.refetch()}>Try again</button></div>:jobs.data?.data.length?<>
+    <div className="table-scroll"><table className="platform-table jobs-table"><thead><tr><th>Job</th><th>Source</th><th>Location</th><th>Posted</th><th>Status</th><th>Actions</th></tr></thead><tbody>{jobs.data.data.map(job=><tr key={job.id}>
+     <td><strong>{job.title}</strong><small className="cell-subtitle">{job.company_name||'Company not provided'}{job.employment_type?` · ${job.employment_type}`:''}</small></td>
+     <td><span className="job-source">{job.source_platform}</span></td>
+     <td>{job.location||job.country||'—'}<small className="cell-subtitle">{label(job.workplace_type||'unknown')}</small></td>
+     <td>{date(job.posted_at)}</td>
+     <td><select className={`job-status ${job.status}`} aria-label={`Status for ${job.title}`} value={job.status} onChange={e=>changeStatus(job,e.target.value)}>{statuses.map(v=><option key={v} value={v}>{label(v)}</option>)}</select></td>
+     <td><div className="row-actions"><button className="icon-button" aria-label={`View ${job.title}`} onClick={()=>setViewing(job)}><Eye size={16}/></button>{job.source_url&&<a className="icon-button" aria-label="Open source listing" href={job.source_url} target="_blank" rel="noreferrer"><ExternalLink size={16}/></a>}<button className="icon-button" aria-label={`Delete ${job.title}`} onClick={()=>setDeleting(job)}><Trash2 size={16}/></button></div></td>
+    </tr>)}</tbody></table></div>
+    <div className="platform-pagination"><span>Showing {((jobs.data.current_page-1)*perPage+1).toLocaleString()}–{Math.min(jobs.data.current_page*perPage,jobs.data.total).toLocaleString()} of {jobs.data.total.toLocaleString()} · Page {jobs.data.current_page} of {jobs.data.last_page}</span><div><select value={perPage} onChange={e=>{setPerPage(Number(e.target.value));setPage(1)}}><option value="15">15 per page</option><option value="30">30 per page</option><option value="50">50 per page</option></select><button className="button" disabled={page<=1} onClick={()=>setPage(page-1)}>Previous</button><button className="button" disabled={page>=jobs.data.last_page} onClick={()=>setPage(page+1)}>Next</button></div></div>
+   </>:<div className="platform-empty"><span><BriefcaseBusiness size={27}/></span><h2>No jobs found</h2><p>{search||source||country||workplace||status?'No jobs match these filters.':'Add a job or import a CSV from any job platform to begin.'}</p><button className="button primary" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button></div>}
+  </section>
+  {creating&&<JobForm close={()=>setCreating(false)} save={async data=>{setBusy(true);setError('');try{await api(`/workspaces/${workspaceId}/jobs`,'POST',data);setCreating(false);setNotice('Job saved to your workspace.');await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}} busy={busy} error={error}/>} 
+  {importing&&<JobImporter close={()=>setImporting(false)} busy={busy} error={error} run={async(sourceName,rows)=>{setBusy(true);setError('');try{const result=await api<{created:number;updated:number;failed:number}>(`/workspaces/${workspaceId}/jobs/import`,'POST',{source_platform:sourceName,jobs:rows});setImporting(false);setNotice(`${result.created} jobs added · ${result.updated} updated · ${result.failed} failed`);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}/>} 
+  {viewing&&<JobDetails job={viewing} close={()=>setViewing(null)}/>} 
+  {deleting&&<Modal title="Delete job?" close={()=>!busy&&setDeleting(null)}><p><strong>{deleting.title}</strong> will be permanently removed from this workspace.</p>{error&&<div className="platform-error">{error}</div>}<div className="dialog-actions"><button className="button" onClick={()=>setDeleting(null)}>Cancel</button><button className="button danger" disabled={busy} onClick={remove}>{busy?'Deleting…':'Delete job'}</button></div></Modal>}
+ </div>
+}
+
+function JobForm({close,save,busy,error}:{close:()=>void;save:(data:Record<string,unknown>)=>void;busy:boolean;error:string}){
+ function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const raw=Object.fromEntries(new FormData(e.currentTarget));save(Object.fromEntries(Object.entries(raw).filter(([,v])=>v!=='')))}
+ return <Modal title="Add a job" close={close}><form className="platform-form" onSubmit={submit}><div className="form-two"><label>Job title<input name="title" required maxLength={255}/></label><label>Source platform<input name="source_platform" required placeholder="Indeed, LinkedIn, Upwork…" maxLength={100}/></label><label>Company<input name="company_name" maxLength={255}/></label><label>Source URL<input name="source_url" type="url" placeholder="https://…"/></label><label>Location<input name="location" maxLength={255}/></label><label>Country<input name="country" maxLength={100}/></label><label>Workplace type<select name="workplace_type" defaultValue="unknown"><option value="unknown">Unknown</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">Onsite</option></select></label><label>Employment type<input name="employment_type" placeholder="Full-time, Contract…"/></label><label>Posted date<input name="posted_at" type="date"/></label><label>Status<select name="status" defaultValue="new">{statuses.map(v=><option key={v} value={v}>{label(v)}</option>)}</select></label></div><label>Description<textarea name="description" rows={7}/></label>{error&&<div className="platform-error">{error}</div>}<div className="dialog-actions"><button type="button" className="button" onClick={close}>Cancel</button><button className="button primary" disabled={busy}>{busy?'Saving…':'Save job'}</button></div></form></Modal>
+}
+
+function JobImporter({close,run,busy,error}:{close:()=>void;run:(source:string,rows:Record<string,unknown>[])=>void;busy:boolean;error:string}){
+ const file=useRef<HTMLInputElement>(null),[source,setSource]=useState('Indeed'),[rows,setRows]=useState<Record<string,unknown>[]>([]),[localError,setLocalError]=useState('');
+ function selectFile(input:File){Papa.parse<Record<string,unknown>>(input,{header:true,skipEmptyLines:'greedy',transformHeader:h=>h.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),complete:r=>{if(r.errors.length&&!r.data.length){setLocalError(r.errors[0].message);return}setRows(r.data);setLocalError('')}})}
+ return <Modal title="Import jobs from CSV" close={close}><div className="job-import-help"><FileUp size={22}/><div><strong>Use an export from any job source</strong><p>Recognized fields include title/job_title, company, location, job_url, job_id, description, posted_at, workplace_type, and salary fields.</p></div></div><form className="platform-form" onSubmit={e=>{e.preventDefault();if(!rows.length){setLocalError('Choose a CSV containing at least one job.');return}run(source,rows)}}><label>Source platform<input value={source} onChange={e=>setSource(e.target.value)} required placeholder="Indeed"/></label><label>CSV file<input ref={file} type="file" accept=".csv,text/csv" onChange={e=>e.target.files?.[0]&&selectFile(e.target.files[0])}/></label>{rows.length>0&&<div className="platform-notice"><Check size={15}/>{rows.length.toLocaleString()} rows ready to import</div>}{(localError||error)&&<div className="platform-error">{localError||error}</div>}<div className="dialog-actions"><button type="button" className="button" onClick={close}>Cancel</button><button className="button primary" disabled={busy||!rows.length}>{busy?'Importing…':`Import ${rows.length||''} jobs`}</button></div></form></Modal>
+}
+
+function JobDetails({job,close}:{job:Job;close:()=>void}){
+ const salary=job.salary_min||job.salary_max?`${job.salary_currency||''} ${job.salary_min?.toLocaleString()||'—'} – ${job.salary_max?.toLocaleString()||'—'}${job.salary_period?` / ${job.salary_period}`:''}`:'Not provided';
+ return <Modal title="Job details" close={close}><div className="job-detail-head"><span><BriefcaseBusiness size={25}/></span><div><h2>{job.title}</h2><p>{job.company_name||'Company not provided'}</p></div>{job.source_url&&<a className="button" href={job.source_url} target="_blank" rel="noreferrer">View listing <ExternalLink size={14}/></a>}</div><div className="job-detail-grid"><Info icon={<Building2/>} title="Source" value={job.source_platform}/><Info icon={<MapPin/>} title="Location" value={[job.location,job.country].filter(Boolean).join(', ')||'Not provided'}/><Info icon={<CalendarDays/>} title="Posted" value={date(job.posted_at)}/><Info icon={<BriefcaseBusiness/>} title="Employment" value={[label(job.workplace_type||'unknown'),job.employment_type,job.seniority_level].filter(Boolean).join(' · ')}/><Info title="Salary" value={salary}/><Info title="Contact" value={[job.contact_name,job.contact_email].filter(Boolean).join(' · ')||'Not provided'}/></div>{job.description&&<section className="job-copy"><h3>Description</h3><p>{job.description}</p></section>}{job.requirements&&<section className="job-copy"><h3>Requirements</h3><p>{job.requirements}</p></section>}</Modal>
+}
+function Info({icon,title,value}:{icon?:ReactNode;title:string;value:string}){return <div className="job-info">{icon&&<span>{icon}</span>}<small>{title}</small><strong>{value}</strong></div>}
+function Modal({title,children,close}:{title:string;children:ReactNode;close:()=>void}){return <dialog className="platform-dialog jobs-dialog" ref={el=>{if(el&&!el.open)el.showModal()}} onCancel={e=>{e.preventDefault();close()}}><div className="modal-header"><h2>{title}</h2><button aria-label="Close dialog" className="icon-button" onClick={close}><X size={20}/></button></div>{children}</dialog>}

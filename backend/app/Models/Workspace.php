@@ -48,6 +48,11 @@ class Workspace extends Model
         return $this->hasMany(LeadList::class);
     }
 
+    public function jobs()
+    {
+        return $this->hasMany(Job::class);
+    }
+
     public function emailSetting()
     {
         return $this->hasOne(EmailSetting::class);
