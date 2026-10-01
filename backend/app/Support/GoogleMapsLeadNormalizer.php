@@ -26,7 +26,11 @@ class GoogleMapsLeadNormalizer
         }
         $website = self::url($value('Website', 'website', 'ActionLinks_website'));
         $address = self::cleanAddress($value('AdditionalDetails_address', 'Address', 'address'));
-        [$city, $state, $postal, $country] = self::location($address);
+        [$parsedCity, $parsedState, $parsedPostal, $parsedCountry] = self::location($address);
+        $city = self::cleanText($value('City', 'city')) ?? $parsedCity;
+        $state = self::cleanText($value('State', 'state')) ?? $parsedState;
+        $postal = self::cleanText($value('PostalCode', 'postalCode', 'postal_code')) ?? $parsedPostal;
+        $country = self::cleanText($value('Country', 'country')) ?? $parsedCountry;
         $rating = self::number($value('AverageRating', 'averageRating', 'rating'));
         $reviews = self::integer($value('ReviewCount', 'reviewCount', 'reviews'));
         if ($rating === null && preg_match('/(?m)^([0-5](?:\.\d)?)\s*\(([\d,]+)\)/u', $listing, $match)) {
@@ -42,20 +46,33 @@ class GoogleMapsLeadNormalizer
             }
         }
         $hours = [];
+        foreach ((array) ($row['weeklyHours'] ?? $row['weekly_hours'] ?? []) as $day => $entry) {
+            if ($entry = self::cleanText(is_array($entry) ? implode(', ', $entry) : $entry)) {
+                $hours[strtolower((string) $day)] = $entry;
+            }
+        }
         foreach (['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as $day) {
             if ($entry = self::cleanText($value("WeeklyHours_$day"))) {
                 $hours[strtolower($day)] = trim(str_replace('', '', $entry));
             }
         }
         $images = [];
+        foreach ((array) ($row['imageUrls'] ?? $row['image_urls'] ?? []) as $image) {
+            if ($url = self::url($image)) {
+                $images[] = $url;
+            }
+        }
         for ($i = 0; $i < 20; $i++) {
             if ($url = self::url($value("ImageUrls_$i"))) {
                 $images[] = $url;
             }
         }
+        $sourceActions = (array) ($row['actionLinks'] ?? $row['action_links'] ?? []);
         $actions = array_filter([
             'website' => self::url($value('ActionLinks_website')),
-            'reserve' => self::url($value('ActionLinks_reserve', 'ReservationURL')),
+            'menu' => self::url($sourceActions['menu'] ?? $value('MenuURL', 'menuURL')),
+            'order' => self::url($sourceActions['order'] ?? $value('OrderURL', 'orderURL')),
+            'reserve' => self::url($sourceActions['reserve'] ?? $value('ActionLinks_reserve', 'ReservationURL', 'reservationURL')),
         ]);
 
         return array_filter([
@@ -81,7 +98,12 @@ class GoogleMapsLeadNormalizer
             'latitude' => self::number($value('Latitude', 'latitude')),
             'longitude' => self::number($value('Longitude', 'longitude')),
             'google_maps_url' => self::url($value('MapsURL', 'mapsURL', 'google_maps_url')),
-            'reservation_url' => self::url($value('ReservationURL', 'ActionLinks_reserve')),
+            'description' => self::cleanText($value('Description', 'description')),
+            'price_range' => self::cleanText($value('PriceRange', 'priceRange', 'price_range')),
+            'plus_code' => self::cleanText($value('PlusCode', 'plusCode', 'plus_code')),
+            'menu_url' => self::url($sourceActions['menu'] ?? $value('MenuURL', 'menuURL')),
+            'order_url' => self::url($sourceActions['order'] ?? $value('OrderURL', 'orderURL')),
+            'reservation_url' => self::url($sourceActions['reserve'] ?? $value('ReservationURL', 'reservationURL', 'ActionLinks_reserve')),
             'weekly_hours' => $hours,
             'social_profiles' => $social,
             'image_urls' => array_values(array_unique($images)),
@@ -92,7 +114,7 @@ class GoogleMapsLeadNormalizer
                 'details_collected' => filter_var($value('DetailsCollected'), FILTER_VALIDATE_BOOLEAN),
                 'updated_at_source' => self::date($value('UpdatedAt')),
             ], fn ($v) => $v !== null && $v !== '' && $v !== false),
-            'raw_maps_details' => ['listing' => $listing ?: null, 'details' => $value('RawDetails'), 'source' => $row],
+            'raw_maps_details' => ['listing' => $listing ?: null, 'details' => $value('RawDetails', 'rawDetails'), 'source' => $row],
             'collected_at' => self::date($value('CollectedAt')),
             'enriched_at' => self::date($value('EnrichedAt', 'DetailsCollectedAt')),
             'name_address_hash' => $address ? hash('sha256', mb_strtolower(trim($name).'|'.trim($address))) : null,
@@ -143,7 +165,7 @@ class GoogleMapsLeadNormalizer
             return [];
         }
 
-        return array_values(array_filter(array_map('trim', preg_split('/\s*,\s*/', (string) $value))));
+        return array_values(array_filter(array_map('trim', preg_split('/\s*[,;]\s*/', (string) $value))));
     }
 
     private static function phones(array $row): array

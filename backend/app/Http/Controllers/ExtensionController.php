@@ -6,10 +6,9 @@ use App\Models\LeadList;
 use App\Models\Workspace;
 use App\Support\Audit;
 use App\Support\ExtensionAccess;
+use App\Support\GoogleMapsLeadNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class ExtensionController extends Controller
 {
@@ -58,34 +57,19 @@ class ExtensionController extends Controller
         $data = $request->validate([
             'list_id' => 'required|integer',
             'leads' => 'required|array|min:1|max:500',
-            'leads.*.name' => 'required|string|max:255',
-            'leads.*.email' => 'nullable|email|max:255',
-            'leads.*.phone' => 'nullable|string|max:100',
-            'leads.*.website' => 'nullable|url:http,https|max:255',
-            'leads.*.address' => 'nullable|string|max:2000',
-            'leads.*.city' => 'nullable|string|max:100',
-            'leads.*.country' => 'nullable|string|max:100',
-            'leads.*.category' => 'nullable|string|max:255',
-            'leads.*.place_id' => 'nullable|string|max:255',
-            'leads.*.cid' => 'nullable|string|max:255',
-            'leads.*.google_maps_url' => 'nullable|url:http,https|max:2000',
-            'leads.*.average_rating' => 'nullable|numeric|between:0,5',
-            'leads.*.review_count' => 'nullable|integer|min:0',
-            'leads.*.latitude' => 'nullable|numeric|between:-90,90',
-            'leads.*.longitude' => 'nullable|numeric|between:-180,180',
-            'leads.*.additional_details' => 'nullable|array',
+            'leads.*' => 'required|array',
         ]);
         $list = $workspace->lists()->findOrFail($data['list_id']);
 
         return DB::transaction(function () use ($workspace, $list, $data) {
             $locked = Workspace::whereKey($workspace->id)->lockForUpdate()->with('plan')->firstOrFail();
             $limit = (int) ($locked->plan->limits['leads'] ?? 0);
-            $created = $existing = 0;
-            foreach ($data['leads'] as $raw) {
-                $leadData = array_filter($raw, fn ($value) => $value !== null && $value !== '');
-                $leadData['website_domain'] = ! empty($leadData['website']) ? preg_replace('/^www\./', '', strtolower(parse_url($leadData['website'], PHP_URL_HOST))) : null;
-                $leadData['normalized_phone'] = ! empty($leadData['phone']) ? preg_replace('/\D/', '', $leadData['phone']) : null;
-                $leadData['name_address_hash'] = ! empty($leadData['address']) ? hash('sha256', mb_strtolower(trim($leadData['name']).'|'.trim($leadData['address']))) : null;
+            $created = $updated = $failed = 0;
+            $errors = [];
+            $count = $locked->leads()->count();
+            foreach ($data['leads'] as $index => $raw) {
+                try {
+                $leadData = GoogleMapsLeadNormalizer::normalize($raw);
                 $identifiers = array_filter(array_intersect_key($leadData, array_flip(['place_id', 'cid', 'website_domain', 'normalized_phone', 'name_address_hash', 'email'])));
                 $match = $identifiers ? $locked->leads()->where(function ($query) use ($identifiers) {
                     foreach ($identifiers as $field => $value) {
@@ -94,19 +78,25 @@ class ExtensionController extends Controller
                 })->first() : null;
                 if ($match) {
                     $lead = $match;
-                    $existing++;
+                    $lead->fill($leadData)->save();
+                    $updated++;
                 } else {
-                    if ($locked->leads()->count() >= $limit) {
-                        throw ValidationException::withMessages(['leads' => 'The workspace lead storage limit has been reached.']);
+                    if ($count >= $limit) {
+                        throw new \RuntimeException('The workspace lead storage limit has been reached.');
                     }
-                    $lead = $locked->leads()->create($leadData + ['collected_at' => now()]);
+                    $lead = $locked->leads()->create($leadData + ['collected_at' => $leadData['collected_at'] ?? now()]);
                     $created++;
+                    $count++;
                 }
                 $list->leads()->syncWithoutDetaching([$lead->id]);
+                } catch (\Throwable $exception) {
+                    $failed++;
+                    $errors[] = ['row' => $index + 1, 'name' => mb_substr((string) ($raw['name'] ?? $raw['Name'] ?? 'Unknown lead'), 0, 100), 'message' => mb_substr($exception->getMessage(), 0, 300)];
+                }
             }
-            Audit::record('extension.leads_saved', $list->id, ['created' => $created, 'existing' => $existing, 'received' => count($data['leads'])], $workspace->id);
+            Audit::record('extension.leads_saved', $list->id, ['created' => $created, 'updated' => $updated, 'failed' => $failed, 'received' => count($data['leads'])], $workspace->id);
 
-            return ['created' => $created, 'existing' => $existing, 'saved' => $created + $existing, 'list' => $list->name];
+            return ['created' => $created, 'updated' => $updated, 'existing' => $updated, 'failed' => $failed, 'saved' => $created + $updated, 'errors' => array_slice($errors, 0, 20), 'list' => $list->name];
         });
     }
 }

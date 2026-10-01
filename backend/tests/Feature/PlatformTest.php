@@ -154,7 +154,16 @@ class PlatformTest extends TestCase
         $otherWorkspace = $this->workspace($otherUser);
         $otherList = $otherWorkspace->lists()->create(['name' => 'Private']);
         $token = $user->createToken('test', ['extension:read', 'extension:write'], now()->addMinutes(15))->plainTextToken;
-        $payload = ['list_id' => $list->id, 'leads' => [['name' => 'Acme HVAC', 'place_id' => 'place-1', 'website' => 'https://acme.test']]];
+        $payload = ['list_id' => $list->id, 'leads' => [[
+            'name' => 'Acme HVAC', 'placeID' => 'place-1', 'cID' => '987654', 'website' => 'https://acme.test',
+            'phone' => '(416) 555-0100', 'email' => 'hello@acme.test, owner@acme.test',
+            'address' => '100 King Street, Toronto, ON M5H 1J9, Canada', 'city' => 'Toronto', 'country' => 'Canada',
+            'category' => 'HVAC contractor;Commercial service', 'averageRating' => '4.8', 'reviewCount' => '1,234',
+            'mapsURL' => 'https://www.google.com/maps/place/acme', 'weeklyHours' => ['Monday' => ['9 AM–5 PM']],
+            'imageUrls' => ['https://images.example.test/acme.jpg'], 'linkedin' => 'https://linkedin.com/company/acme',
+            'description' => 'Commercial heating and cooling contractor.', 'plusCode' => 'QW4R+2X Toronto',
+            'actionLinks' => ['menu' => 'https://acme.test/services'], 'rawDetails' => 'Acme HVAC full Google Maps details',
+        ]]];
 
         $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', $payload)
             ->assertOk()->assertJsonPath('created', 1)->assertJsonPath('saved', 1);
@@ -163,6 +172,17 @@ class PlatformTest extends TestCase
         $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', array_merge($payload, ['list_id' => $otherList->id]))->assertNotFound();
         $this->withToken($token)->postJson('/api/extension/workspaces/'.$otherWorkspace->id.'/leads', array_merge($payload, ['list_id' => $otherList->id]))->assertNotFound();
         $this->assertDatabaseCount('leads', 1);
+        $lead = $workspace->leads()->firstOrFail();
+        $this->assertSame('Toronto', $lead->city);
+        $this->assertSame('Canada', $lead->country);
+        $this->assertSame('hello@acme.test', $lead->email);
+        $this->assertSame(['owner@acme.test'], $lead->additional_emails);
+        $this->assertSame(['HVAC contractor', 'Commercial service'], $lead->categories);
+        $this->assertSame('9 AM–5 PM', $lead->weekly_hours['monday']);
+        $this->assertSame('https://linkedin.com/company/acme', $lead->social_profiles['linkedin'][0]);
+        $this->assertSame('Commercial heating and cooling contractor.', $lead->description);
+        $this->assertSame('QW4R+2X Toronto', $lead->plus_code);
+        $this->assertSame('Acme HVAC full Google Maps details', $lead->raw_maps_details['details']);
         $this->assertDatabaseHas('lead_list_items', ['lead_list_id' => $list->id]);
 
         $workspace->update(['plan_id' => Plan::where('slug', 'free')->firstOrFail()->id]);

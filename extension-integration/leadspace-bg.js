@@ -36,26 +36,6 @@ async function selectedWorkspace() {
   return {stored, context, workspace};
 }
 
-function mapLead(lead) {
-  const emails = String(lead.email || '').split(',').map(value => value.trim()).filter(Boolean);
-  return {
-    name: lead.name,
-    email: emails[0] || null,
-    phone: lead.phone || null,
-    website: lead.website || null,
-    address: lead.address || null,
-    category: lead.category || null,
-    place_id: lead.placeID || null,
-    cid: lead.cID || null,
-    google_maps_url: lead.mapsURL || null,
-    average_rating: lead.averageRating === '' ? null : Number(lead.averageRating),
-    review_count: lead.reviewCount === '' ? null : Number(lead.reviewCount),
-    latitude: lead.latitude === '' ? null : Number(lead.latitude),
-    longitude: lead.longitude === '' ? null : Number(lead.longitude),
-    additional_details: {social_profiles: {linkedin: lead.linkedin, facebook: lead.facebook, instagram: lead.instagram}, extracted_at: lead.collectedAt}
-  };
-}
-
 async function connectLeadspace() {
   const redirect = chrome.identity.getRedirectURL('leadspace');
   const extensionId = chrome.runtime.id;
@@ -88,7 +68,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const {stored, workspace} = await selectedWorkspace();
       const listId = Number(stored.leadspaceListId);
       if (!workspace.lists.some(list => list.id === listId)) throw new Error('Choose a Lead List in the extension before saving.');
-      return leadspaceApi(`/extension/workspaces/${workspace.id}/leads`, {method: 'POST', body: JSON.stringify({list_id: listId, leads: message.data.map(mapLead)})});
+      return leadspaceApi(`/extension/workspaces/${workspace.id}/leads`, {method: 'POST', body: JSON.stringify({list_id: listId, leads: message.data})});
     }
     throw new Error('Unknown Leadspace extension action.');
   };
