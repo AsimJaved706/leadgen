@@ -12,7 +12,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->validateCsrfTokens(except: ['api/stripe/webhook', 'api/extension/context', 'api/extension/workspaces/*/leads']);
+        $middleware->validateCsrfTokens(except: [
+            'api/stripe/webhook',
+            'api/extension/context',
+            'api/extension/workspaces/*/leads',
+            'api/extension/workspaces/*/jobs/linkedin',
+            'api/workspaces/*/jobs/import',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->is('api/*') || $request->expectsJson());

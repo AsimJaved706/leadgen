@@ -18,6 +18,9 @@ class JobController extends Controller
 
     private function authorizeWorkspace(Request $request, Workspace $workspace, bool $write = false): void
     {
+        if ($write && $request->bearerToken()) {
+            abort_unless($request->user()->tokenCan('jobs:write'), 403, 'This API token cannot import jobs.');
+        }
         $member = $workspace->members()->where('users.id', $request->user()->id)->first();
         abort_unless($member, 404);
         abort_if($workspace->suspended_at, 403, 'This workspace is suspended.');

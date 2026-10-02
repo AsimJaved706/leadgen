@@ -89,4 +89,20 @@ class JobsTest extends TestCase
         $this->getJson("/api/workspaces/{$workspace->id}/jobs/filters")
             ->assertOk()->assertJsonPath('with_email', 1)->assertJsonPath('with_domain', 1)->assertJsonPath('latest_sync.status', 'completed');
     }
+
+    public function test_scoped_token_can_import_jobs_but_read_only_token_cannot(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $payload = ['source_platform' => 'LinkedIn', 'jobs' => [[
+            'source_job_id' => 'li-123', 'title' => 'Full Stack Developer',
+            'source_url' => 'https://www.linkedin.com/jobs/view/123',
+        ]]];
+        $writeToken = $user->createToken('worker', ['jobs:write'], now()->addDay())->plainTextToken;
+        $this->withToken($writeToken)->postJson("/api/workspaces/{$workspace->id}/jobs/import", $payload)
+            ->assertOk()->assertJsonPath('created', 1);
+        $this->app['auth']->forgetGuards();
+        $readToken = $user->createToken('reader', ['jobs:read'], now()->addDay())->plainTextToken;
+        $this->withToken($readToken)->postJson("/api/workspaces/{$workspace->id}/jobs/import", $payload)->assertForbidden();
+    }
 }
