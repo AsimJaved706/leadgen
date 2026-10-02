@@ -26,7 +26,7 @@ const plainText=(value:string)=>new DOMParser().parseFromString(value,'text/html
 export function Jobs({workspaceId}:{workspaceId:number}){
  const cache=useQueryClient();
  const [page,setPage]=useState(1),[perPage,setPerPage]=useState(15),[search,setSearch]=useState(''),[source,setSource]=useState(''),[country,setCountry]=useState(''),[workplace,setWorkplace]=useState(''),[status,setStatus]=useState('');
- const [viewing,setViewing]=useState<Job|null>(null),[creating,setCreating]=useState(false),[importing,setImporting]=useState(false),[deleting,setDeleting]=useState<Job|null>(null);
+ const [viewing,setViewing]=useState<Job|null>(null),[creating,setCreating]=useState(false),[importing,setImporting]=useState(false),[deleting,setDeleting]=useState<Job|null>(null),[deletingAll,setDeletingAll]=useState(false);
  const [notice,setNotice]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const params=useMemo(()=>new URLSearchParams({page:String(page),per_page:String(perPage),...(search&&{q:search}),...(source&&{source}),...(country&&{country}),...(workplace&&{workplace_type:workplace}),...(status&&{status})}).toString(),[page,perPage,search,source,country,workplace,status]);
  const jobs=useQuery({queryKey:['jobs',workspaceId,params],queryFn:()=>api<Page<Job>>(`/workspaces/${workspaceId}/jobs?${params}`),enabled:!!workspaceId});
@@ -37,6 +37,7 @@ export function Jobs({workspaceId}:{workspaceId:number}){
 
  async function changeStatus(job:Job,next:string){setError('');try{await api(`/workspaces/${workspaceId}/jobs/${job.id}`,'PATCH',{status:next});await refresh()}catch(e){setError((e as Error).message)}}
  async function remove(){if(!deleting)return;setBusy(true);setError('');try{await api(`/workspaces/${workspaceId}/jobs/${deleting.id}`,'DELETE');setDeleting(null);setViewing(null);setNotice('Job removed from the workspace.');await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ async function removeAll(){setBusy(true);setError('');try{const result=await api<{deleted:number}>(`/workspaces/${workspaceId}/jobs`,'DELETE');setDeletingAll(false);setPage(1);setNotice(`${result.deleted} jobs permanently deleted.`);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function sync(){setBusy(true);setError('');setNotice('');try{const result=await api<SyncRun>(`/workspaces/${workspaceId}/jobs/sync`,'POST');setNotice(`Daily feeds synced: ${result.created_count} new · ${result.updated_count} refreshed · ${result.failed_count} failed`);setPage(1);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function enrich(){setBusy(true);setError('');setNotice('');try{const result=await api<{checked:number;found:number}>(`/workspaces/${workspaceId}/jobs/enrich`,'POST');setNotice(`Checked ${result.checked} employer websites · found ${result.found} public emails`);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
 
@@ -45,7 +46,7 @@ export function Jobs({workspaceId}:{workspaceId:number}){
  const latestWorker=worker.data?.requests[0];
 
  return <div className="jobs-page">
-  <div className="jobs-actions"><button className="button primary" disabled={busy||!!activeWorker} onClick={()=>queueWorker('scrape')}><CloudDownload size={16}/>Run EC2 scraper</button><button className="button" disabled={busy||!!activeWorker} onClick={()=>queueWorker('enrich')}><MailSearch size={16}/>Find job emails</button><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>Sync free feeds</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
+  <div className="jobs-actions"><button className="button primary" disabled={busy||!!activeWorker} onClick={()=>queueWorker('scrape')}><CloudDownload size={16}/>Run EC2 scraper</button><button className="button" disabled={busy||!!activeWorker} onClick={()=>queueWorker('enrich')}><MailSearch size={16}/>Find job emails</button><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>Sync free feeds</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button><button className="button danger" disabled={busy||!jobs.data?.total} onClick={()=>setDeletingAll(true)}><Trash2 size={16}/>Delete all</button></div>
   {notice&&<div className="platform-notice"><Check size={15}/>{notice}<button className="notice-close" onClick={()=>setNotice('')}><X size={14}/></button></div>}
   {error&&<div className="platform-error">{error}</div>}
   {latestWorker&&<div className={`job-sync-note worker-${latestWorker.status}`}><CloudDownload size={14}/><strong>EC2 worker:</strong> {label(latestWorker.type)} is {latestWorker.status}.{latestWorker.status==='completed'?' Results are saved in this workspace.':''}{latestWorker.error?` ${latestWorker.error}`:''}</div>}
@@ -66,11 +67,11 @@ export function Jobs({workspaceId}:{workspaceId:number}){
   </div>
   <section className="platform-card jobs-table-card">
    {jobs.isLoading?<div className="jobs-loading">Loading jobs…</div>:jobs.isError?<div className="platform-empty"><h2>Jobs could not be loaded</h2><p>{(jobs.error as Error).message}</p><button className="button" onClick={()=>jobs.refetch()}>Try again</button></div>:jobs.data?.data.length?<>
-    <div className="table-scroll"><table className="platform-table jobs-table"><thead><tr><th>Job</th><th>Source</th><th>Location</th><th>Posted</th><th>Status</th><th>Actions</th></tr></thead><tbody>{jobs.data.data.map(job=><tr key={job.id}>
+    <div className="table-scroll"><table className="platform-table jobs-table"><thead><tr><th>Job</th><th>Source</th><th>Location</th><th>Data received</th><th>Status</th><th>Actions</th></tr></thead><tbody>{jobs.data.data.map(job=><tr key={job.id}>
      <td><strong>{job.title}</strong><small className="cell-subtitle">{job.company_name||'Company not provided'}{job.employment_type?` · ${job.employment_type}`:''}</small><span className="job-enrichment">{job.company_domain&&<span><Globe2 size={11}/>{job.company_domain}</span>}{job.contact_email&&<span className="has-email"><Mail size={11}/>Email found</span>}</span></td>
      <td><span className="job-source">{job.source_platform}</span></td>
      <td>{job.location||job.country||'—'}<small className="cell-subtitle">{label(job.workplace_type||'unknown')}</small></td>
-     <td>{date(job.posted_at)}</td>
+     <td>{date(job.created_at)}<small className="cell-subtitle">Posted {date(job.posted_at)}</small></td>
      <td><select className={`job-status ${job.status}`} aria-label={`Status for ${job.title}`} value={job.status} onChange={e=>changeStatus(job,e.target.value)}>{statuses.map(v=><option key={v} value={v}>{label(v)}</option>)}</select></td>
      <td><div className="row-actions"><button className="icon-button" aria-label={`View ${job.title}`} onClick={()=>setViewing(job)}><Eye size={16}/></button>{job.source_url&&<a className="icon-button" aria-label="Open source listing" href={job.source_url} target="_blank" rel="noreferrer"><ExternalLink size={16}/></a>}<button className="icon-button" aria-label={`Delete ${job.title}`} onClick={()=>setDeleting(job)}><Trash2 size={16}/></button></div></td>
     </tr>)}</tbody></table></div>
@@ -81,6 +82,7 @@ export function Jobs({workspaceId}:{workspaceId:number}){
   {importing&&<JobImporter close={()=>setImporting(false)} busy={busy} error={error} run={async(sourceName,rows)=>{setBusy(true);setError('');try{const result=await api<{created:number;updated:number;failed:number}>(`/workspaces/${workspaceId}/jobs/import`,'POST',{source_platform:sourceName,jobs:rows});setImporting(false);setNotice(`${result.created} jobs added · ${result.updated} updated · ${result.failed} failed`);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}/>} 
   {viewing&&<JobDetails job={viewing} close={()=>setViewing(null)}/>} 
   {deleting&&<Modal title="Delete job?" close={()=>!busy&&setDeleting(null)}><p><strong>{deleting.title}</strong> will be permanently removed from this workspace.</p>{error&&<div className="platform-error">{error}</div>}<div className="dialog-actions"><button className="button" onClick={()=>setDeleting(null)}>Cancel</button><button className="button danger" disabled={busy} onClick={remove}>{busy?'Deleting…':'Delete job'}</button></div></Modal>}
+  {deletingAll&&<Modal title="Delete every job?" close={()=>!busy&&setDeletingAll(false)}><p>All <strong>{jobs.data?.total.toLocaleString()||0}</strong> jobs in this workspace will be permanently deleted.</p><p>This action cannot be undone.</p>{error&&<div className="platform-error">{error}</div>}<div className="dialog-actions"><button className="button" disabled={busy} onClick={()=>setDeletingAll(false)}>Cancel</button><button className="button danger" disabled={busy} onClick={removeAll}>{busy?'Deleting…':'Delete all permanently'}</button></div></Modal>}
  </div>
 }
 

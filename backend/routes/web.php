@@ -52,6 +52,7 @@ Route::prefix('api')->group(function () {
         Route::post('/worker/job-requests/{workerRequest}/complete', [JobWorkerController::class, 'complete'])->middleware('throttle:120,1');
         Route::post('/workspaces/{workspace}/jobs', [JobController::class, 'store']);
         Route::post('/workspaces/{workspace}/jobs/import', [JobController::class, 'import'])->middleware('throttle:20,1');
+        Route::delete('/workspaces/{workspace}/jobs', [JobController::class, 'destroyAll']);
         Route::get('/workspaces/{workspace}/jobs/{job}', [JobController::class, 'show']);
         Route::patch('/workspaces/{workspace}/jobs/{job}', [JobController::class, 'update']);
         Route::delete('/workspaces/{workspace}/jobs/{job}', [JobController::class, 'destroy']);

@@ -40,7 +40,7 @@ class JobController extends Controller
         ]);
 
         return $this->filtered($workspace, $data)
-            ->orderBy($data['sort'] ?? 'posted_at', $data['direction'] ?? 'desc')
+            ->orderBy($data['sort'] ?? 'created_at', $data['direction'] ?? 'desc')
             ->orderByDesc('id')->paginate($data['per_page'] ?? 15);
     }
 
@@ -140,6 +140,14 @@ class JobController extends Controller
         Audit::record('job.deleted', $record->id, [], $workspace->id);
         $record->delete();
         return response()->noContent();
+    }
+
+    public function destroyAll(Request $request, Workspace $workspace): array
+    {
+        $this->authorizeWorkspace($request, $workspace, true);
+        $deleted = $workspace->jobs()->delete();
+        Audit::record('jobs.deleted_all', null, ['deleted' => $deleted], $workspace->id);
+        return ['deleted' => $deleted];
     }
 
     private function filtered(Workspace $workspace, array $data)

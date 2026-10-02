@@ -123,4 +123,18 @@ class JobsTest extends TestCase
         $this->actingAs($user)->getJson("/api/workspaces/{$workspace->id}/jobs/worker-status")
             ->assertOk()->assertJsonPath('requests.0.status', 'completed');
     }
+
+    public function test_jobs_are_sorted_by_arrival_date_and_owner_can_delete_all(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+        $workspace->jobs()->create(['source_platform' => 'Indeed', 'title' => 'Older', 'dedupe_hash' => hash('sha256', 'older'), 'created_at' => now()->subDay()]);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Newest', 'dedupe_hash' => hash('sha256', 'newest'), 'created_at' => now()]);
+
+        $this->actingAs($owner)->getJson("/api/workspaces/{$workspace->id}/jobs")
+            ->assertOk()->assertJsonPath('data.0.title', 'Newest');
+        $this->deleteJson("/api/workspaces/{$workspace->id}/jobs")
+            ->assertOk()->assertJsonPath('deleted', 2);
+        $this->assertDatabaseMissing('workspace_jobs', ['workspace_id' => $workspace->id]);
+    }
 }
