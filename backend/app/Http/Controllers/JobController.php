@@ -34,6 +34,7 @@ class JobController extends Controller
         $data = $request->validate([
             'q' => 'nullable|string|max:150', 'source' => 'nullable|string|max:100',
             'country' => 'nullable|string|max:100', 'workplace_type' => 'nullable|string|max:30',
+            'email_status' => 'nullable|in:with_email,without_email',
             'status' => 'nullable|in:'.implode(',', self::STATUSES),
             'sort' => 'nullable|in:posted_at,created_at,title,company_name',
             'direction' => 'nullable|in:asc,desc', 'per_page' => 'nullable|integer|in:15,30,50',
@@ -159,6 +160,8 @@ class JobController extends Controller
             ->when($data['source'] ?? null, fn ($q, $v) => $q->where('source_platform', $v))
             ->when($data['country'] ?? null, fn ($q, $v) => $q->where('country', $v))
             ->when($data['workplace_type'] ?? null, fn ($q, $v) => $q->where('workplace_type', $v))
+            ->when(($data['email_status'] ?? null) === 'with_email', fn ($q) => $q->whereNotNull('contact_email')->where('contact_email', '!=', ''))
+            ->when(($data['email_status'] ?? null) === 'without_email', fn ($q) => $q->where(fn ($inner) => $inner->whereNull('contact_email')->orWhere('contact_email', '')))
             ->when($data['status'] ?? null, fn ($q, $v) => $q->where('status', $v));
     }
 

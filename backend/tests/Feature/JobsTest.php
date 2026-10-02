@@ -137,4 +137,21 @@ class JobsTest extends TestCase
             ->assertOk()->assertJsonPath('deleted', 2);
         $this->assertDatabaseMissing('workspace_jobs', ['workspace_id' => $workspace->id]);
     }
+
+    public function test_email_filter_and_job_quality_scores_are_returned(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'source_url' => 'https://linkedin.com/jobs/1',
+            'title' => 'Remote Developer', 'company_name' => 'Acme', 'company_domain' => 'acme.test',
+            'workplace_type' => 'remote', 'contact_email' => 'jobs@acme.test', 'description' => str_repeat('Detailed role information. ', 30),
+            'posted_at' => now(), 'dedupe_hash' => hash('sha256', 'scored')]);
+        $workspace->jobs()->create(['source_platform' => 'Unknown', 'title' => 'Other', 'dedupe_hash' => hash('sha256', 'no-email')]);
+
+        $this->actingAs($user)->getJson("/api/workspaces/{$workspace->id}/jobs?email_status=with_email")
+            ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.risk_level', 'low')
+            ->assertJsonPath('data.0.trust_score', 100)->assertJsonPath('data.0.opportunity_score', 100);
+        $this->getJson("/api/workspaces/{$workspace->id}/jobs?email_status=without_email")
+            ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.title', 'Other');
+    }
 }
