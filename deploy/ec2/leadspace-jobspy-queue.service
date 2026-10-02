@@ -1,0 +1,12 @@
+[Unit]
+Description=Leadspace EC2 job scraper request worker
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/leadspace-jobspy
+ExecStart=/home/ubuntu/leadspace-jobspy/.venv/bin/python /home/ubuntu/leadspace-jobspy/queue_worker.py
+
+[Install]
+WantedBy=multi-user.target

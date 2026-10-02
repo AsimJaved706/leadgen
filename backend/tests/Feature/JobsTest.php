@@ -105,4 +105,22 @@ class JobsTest extends TestCase
         $readToken = $user->createToken('reader', ['jobs:read'], now()->addDay())->plainTextToken;
         $this->withToken($readToken)->postJson("/api/workspaces/{$workspace->id}/jobs/import", $payload)->assertForbidden();
     }
+
+    public function test_dashboard_can_queue_and_worker_can_complete_scrape(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", ['type' => 'scrape'])
+            ->assertStatus(202)->assertJsonPath('status', 'pending');
+        $this->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", ['type' => 'scrape'])->assertConflict();
+
+        $token = $user->createToken('ec2', ['jobs:write'], now()->addDay())->plainTextToken;
+        $claim = $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertOk()
+            ->assertJsonPath('status', 'running')->json();
+        $this->withToken($token)->postJson("/api/worker/job-requests/{$claim['id']}/complete", [
+            'status' => 'completed', 'result' => ['fetched' => 50],
+        ])->assertOk()->assertJsonPath('result.fetched', 50);
+        $this->actingAs($user)->getJson("/api/workspaces/{$workspace->id}/jobs/worker-status")
+            ->assertOk()->assertJsonPath('requests.0.status', 'completed');
+    }
 }

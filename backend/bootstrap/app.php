@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/extension/workspaces/*/leads',
             'api/extension/workspaces/*/jobs/linkedin',
             'api/workspaces/*/jobs/import',
+            'api/worker/job-requests/claim',
+            'api/worker/job-requests/*/complete',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

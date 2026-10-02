@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Papa from 'papaparse';
-import { BriefcaseBusiness, Building2, CalendarDays, Check, Eye, ExternalLink, FileUp, Globe2, Mail, MailSearch, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { BriefcaseBusiness, Building2, CalendarDays, Check, CloudDownload, Eye, ExternalLink, FileUp, Globe2, Mail, MailSearch, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { api, type Page } from './api';
 import './jobs.css';
 
@@ -16,6 +16,7 @@ type Job = {
 type FilterValue={source_platform?:string;country?:string;workplace_type?:string;total:number};
 type SyncRun={id:number;status:string;created_count:number;updated_count:number;failed_count:number;started_at:string;finished_at?:string|null};
 type Filters={sources:FilterValue[];countries:FilterValue[];workplace_types:FilterValue[];statuses:string[];with_email:number;with_domain:number;latest_sync?:SyncRun|null};
+type WorkerRequest={id:number;type:'scrape'|'enrich';status:'pending'|'running'|'completed'|'failed';error?:string|null;created_at:string};
 
 const statuses=['new','saved','applied','interview','rejected','closed'];
 const label=(value:string)=>value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -30,6 +31,7 @@ export function Jobs({workspaceId}:{workspaceId:number}){
  const params=useMemo(()=>new URLSearchParams({page:String(page),per_page:String(perPage),...(search&&{q:search}),...(source&&{source}),...(country&&{country}),...(workplace&&{workplace_type:workplace}),...(status&&{status})}).toString(),[page,perPage,search,source,country,workplace,status]);
  const jobs=useQuery({queryKey:['jobs',workspaceId,params],queryFn:()=>api<Page<Job>>(`/workspaces/${workspaceId}/jobs?${params}`),enabled:!!workspaceId});
  const filters=useQuery({queryKey:['job-filters',workspaceId],queryFn:()=>api<Filters>(`/workspaces/${workspaceId}/jobs/filters`),enabled:!!workspaceId});
+ const worker=useQuery({queryKey:['job-worker',workspaceId],queryFn:()=>api<{requests:WorkerRequest[]}>(`/workspaces/${workspaceId}/jobs/worker-status`),enabled:!!workspaceId,refetchInterval:q=>q.state.data?.requests.some(r=>r.status==='pending'||r.status==='running')?3000:15000});
  const refresh=async()=>Promise.all([cache.invalidateQueries({queryKey:['jobs',workspaceId]}),cache.invalidateQueries({queryKey:['job-filters',workspaceId]})]);
  const clear=()=>{setSearch('');setSource('');setCountry('');setWorkplace('');setStatus('');setPage(1)};
 
@@ -38,10 +40,15 @@ export function Jobs({workspaceId}:{workspaceId:number}){
  async function sync(){setBusy(true);setError('');setNotice('');try{const result=await api<SyncRun>(`/workspaces/${workspaceId}/jobs/sync`,'POST');setNotice(`Daily feeds synced: ${result.created_count} new · ${result.updated_count} refreshed · ${result.failed_count} failed`);setPage(1);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function enrich(){setBusy(true);setError('');setNotice('');try{const result=await api<{checked:number;found:number}>(`/workspaces/${workspaceId}/jobs/enrich`,'POST');setNotice(`Checked ${result.checked} employer websites · found ${result.found} public emails`);await refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
 
+ async function queueWorker(type:'scrape'|'enrich'){setBusy(true);setError('');setNotice('');try{await api(`/workspaces/${workspaceId}/jobs/worker-requests`,'POST',{type});setNotice(type==='scrape'?'EC2 scraper queued. Jobs will appear automatically.':'EC2 email discovery queued.');await worker.refetch()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ const activeWorker=worker.data?.requests.find(r=>r.status==='pending'||r.status==='running');
+ const latestWorker=worker.data?.requests[0];
+
  return <div className="jobs-page">
-  <div className="jobs-actions"><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>Sync jobs</button><button className="button" disabled={busy} onClick={enrich}><MailSearch size={16}/>Find emails</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button primary" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
+  <div className="jobs-actions"><button className="button primary" disabled={busy||!!activeWorker} onClick={()=>queueWorker('scrape')}><CloudDownload size={16}/>Run EC2 scraper</button><button className="button" disabled={busy||!!activeWorker} onClick={()=>queueWorker('enrich')}><MailSearch size={16}/>Find job emails</button><button className="button" disabled={busy} onClick={sync}><RefreshCw size={16} className={busy?'spin':''}/>Sync free feeds</button><button className="button" onClick={()=>setImporting(true)}><FileUp size={16}/>Import jobs</button><button className="button" onClick={()=>setCreating(true)}><Plus size={16}/>Add job</button></div>
   {notice&&<div className="platform-notice"><Check size={15}/>{notice}<button className="notice-close" onClick={()=>setNotice('')}><X size={14}/></button></div>}
   {error&&<div className="platform-error">{error}</div>}
+  {latestWorker&&<div className={`job-sync-note worker-${latestWorker.status}`}><CloudDownload size={14}/><strong>EC2 worker:</strong> {label(latestWorker.type)} is {latestWorker.status}.{latestWorker.status==='completed'?' Results are saved in this workspace.':''}{latestWorker.error?` ${latestWorker.error}`:''}</div>}
   <section className="jobs-summary">
    <article><BriefcaseBusiness size={22}/><span><strong>{jobs.data?.total||0}</strong>Total jobs</span></article>
    <article><Building2 size={22}/><span><strong>{filters.data?.sources.length||0}</strong>Connected sources</span></article>
