@@ -190,6 +190,33 @@ class PlatformTest extends TestCase
         $this->withToken($token)->postJson('/api/extension/workspaces/'.$workspace->id.'/leads', $payload)->assertStatus(402);
     }
 
+    public function test_extension_saves_linkedin_job_and_deduplicates_by_job_id(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $token = $user->createToken('test', ['extension:read', 'extension:write'], now()->addMinutes(15))->plainTextToken;
+        $path = '/api/extension/workspaces/'.$workspace->id.'/jobs/linkedin';
+        $payload = [
+            'source_job_id' => '4298765432', 'source_url' => 'https://www.linkedin.com/jobs/view/4298765432/',
+            'title' => 'Senior Full Stack Developer', 'company_name' => 'Example Labs',
+            'location' => 'Toronto, Ontario, Canada', 'country' => 'Canada', 'workplace_type' => 'hybrid',
+            'description' => 'Build and maintain customer-facing software.', 'posted_at' => '2026-10-01T12:00:00Z',
+            'metadata' => ['captured_from' => 'linkedin_job_page'],
+        ];
+
+        $this->withToken($token)->postJson($path, $payload)->assertCreated()
+            ->assertJsonPath('created', true)->assertJsonPath('job.source_platform', 'LinkedIn');
+        $this->withToken($token)->postJson($path, array_merge($payload, ['title' => 'Updated title']))->assertOk()
+            ->assertJsonPath('created', false)->assertJsonPath('job.title', 'Updated title');
+        $this->assertDatabaseCount('workspace_jobs', 1);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'extension.linkedin_job_saved']);
+
+        $this->withToken($token)->postJson($path, array_merge($payload, ['source_url' => 'https://evil.example/jobs/4298765432']))
+            ->assertUnprocessable()->assertJsonValidationErrors('source_url');
+        $workspace->update(['plan_id' => Plan::where('slug', 'free')->value('id')]);
+        $this->withToken($token)->postJson($path, $payload)->assertPaymentRequired();
+    }
+
     public function test_database_lead_persistence_search_deduplication_and_plan_limit(): void
     {
         $u = User::factory()->create();

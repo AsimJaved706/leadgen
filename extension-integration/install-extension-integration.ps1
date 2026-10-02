@@ -5,13 +5,17 @@ $extensionRoot = Join-Path (Split-Path -Parent $sourceRoot) 'google-maps-extract
 Copy-Item (Join-Path $PSScriptRoot 'leadspace-bg.js') (Join-Path $extensionRoot 'js\leadspace-bg.js') -Force
 Copy-Item (Join-Path $PSScriptRoot 'popup.html') (Join-Path $extensionRoot 'popup.html') -Force
 Copy-Item (Join-Path $PSScriptRoot 'popup.js') (Join-Path $extensionRoot 'js\popup.js') -Force
+Copy-Item (Join-Path $PSScriptRoot 'linkedin-job.js') (Join-Path $extensionRoot 'js\linkedin-job.js') -Force
 
 $manifestPath = Join-Path $extensionRoot 'manifest.json'
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $manifest.permissions = @($manifest.permissions + 'identity' | Select-Object -Unique)
+$manifest.host_permissions = @($manifest.host_permissions + 'https://www.linkedin.com/*' | Select-Object -Unique)
+$linkedinScript = [pscustomobject]@{ matches = @('https://www.linkedin.com/jobs/*'); js = @('js/linkedin-job.js'); run_at = 'document_idle' }
+if (-not ($manifest.content_scripts | Where-Object { $_.js -contains 'js/linkedin-job.js' })) { $manifest.content_scripts = @($manifest.content_scripts) + $linkedinScript }
 $manifest.version = '3.0.0'
 $manifest.name = 'Leadspace Maps Extractor'
-$manifest.description = 'Save Google Maps business leads directly to an authorized Leadspace workspace and Lead List.'
+$manifest.description = 'Save Google Maps leads and opened LinkedIn jobs to an authorized Leadspace workspace.'
 $manifestJson = $manifest | ConvertTo-Json -Depth 20
 [IO.File]::WriteAllText($manifestPath, $manifestJson, (New-Object Text.UTF8Encoding($false)))
 

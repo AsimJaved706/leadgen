@@ -9,6 +9,7 @@ use App\Support\ExtensionAccess;
 use App\Support\GoogleMapsLeadNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ExtensionController extends Controller
 {
@@ -98,5 +99,37 @@ class ExtensionController extends Controller
 
             return ['created' => $created, 'updated' => $updated, 'existing' => $updated, 'failed' => $failed, 'saved' => $created + $updated, 'errors' => array_slice($errors, 0, 20), 'list' => $list->name];
         });
+    }
+
+    public function storeLinkedInJob(Request $request, Workspace $workspace)
+    {
+        abort_unless($request->user()->tokenCan('extension:write'), 403);
+        $member = $workspace->members()->where('users.id', $request->user()->id)->first();
+        abort_unless($member, 404);
+        abort_if($member->pivot->role === 'viewer', 403, 'Viewers cannot save jobs.');
+        $access = ExtensionAccess::status($workspace);
+        abort_unless($access['allowed'], 402, $access['reason']);
+        $data = $request->validate([
+            'source_job_id' => 'nullable|string|max:255',
+            'source_url' => ['required', 'url:http,https', 'max:2000', 'regex:/^https?:\\/\\/([a-z0-9-]+\\.)*linkedin\\.com\\//i'],
+            'title' => 'required|string|max:255', 'company_name' => 'nullable|string|max:255',
+            'company_website' => 'nullable|url:http,https|max:255', 'location' => 'nullable|string|max:255',
+            'country' => 'nullable|string|max:100', 'workplace_type' => 'nullable|in:remote,hybrid,onsite,unknown',
+            'employment_type' => 'nullable|string|max:50', 'seniority_level' => 'nullable|string|max:50',
+            'description' => 'nullable|string|max:100000', 'contact_name' => 'nullable|string|max:255',
+            'contact_email' => 'nullable|email|max:255', 'posted_at' => 'nullable|date',
+            'expires_at' => 'nullable|date', 'metadata' => 'nullable|array',
+        ]);
+        $data['source_platform'] = 'LinkedIn';
+        $data['workplace_type'] = $data['workplace_type'] ?? 'unknown';
+        $data['scraped_at'] = now();
+        if (blank($data['source_job_id'] ?? null) && preg_match('~/jobs/view/(\\d+)~', $data['source_url'], $matches)) $data['source_job_id'] = $matches[1];
+        $identity = filled($data['source_job_id'] ?? null) ? 'linkedin|'.$data['source_job_id'] : preg_replace('/[?#].*$/', '', rtrim($data['source_url'], '/'));
+        $data['dedupe_hash'] = hash('sha256', Str::lower($identity));
+        $existing = $workspace->jobs()->where('dedupe_hash', $data['dedupe_hash'])->first();
+        if ($existing) { $existing->fill($data)->save(); $job = $existing->fresh(); }
+        else { $job = $workspace->jobs()->create($data + ['status' => 'new']); }
+        Audit::record('extension.linkedin_job_saved', $job->id, ['created' => ! $existing], $workspace->id);
+        return response()->json(['created' => ! $existing, 'job' => $job], $existing ? 200 : 201);
     }
 }

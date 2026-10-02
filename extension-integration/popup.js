@@ -41,4 +41,10 @@ $('disconnect').addEventListener('click', async () => { await send('leadspaceDis
 $('workspace').addEventListener('change', () => renderWorkspace(null));
 $('list').addEventListener('change', () => chrome.storage.local.set({leadspaceListId: Number($('list').value) || null}));
 $('search').addEventListener('click', async () => { try { await send('leadspaceCanExtract'); const query = $('query').value.trim(); if (query) chrome.tabs.create({url: `https://www.google.com/maps/search/${encodeURIComponent(query)}`}); } catch (error) { message(error.message); } });
+$('saveLinkedIn').addEventListener('click', async () => {
+  clearMessage(); $('saveLinkedIn').disabled = true;
+  try { const result = await send('leadspaceSaveLinkedInJob'); message(`${result.job.title} ${result.created ? 'saved' : 'updated'} in Jobs.`, 'success'); }
+  catch (error) { message(error.message); }
+  finally { $('saveLinkedIn').disabled = false; }
+});
 load();

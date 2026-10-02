@@ -30,6 +30,7 @@ Route::prefix('api')->group(function () {
         Route::post('/extension/token', [ExtensionController::class, 'token'])->middleware('throttle:10,1');
         Route::get('/extension/context', [ExtensionController::class, 'context'])->middleware('throttle:60,1');
         Route::post('/extension/workspaces/{workspace}/leads', [ExtensionController::class, 'storeLeads'])->middleware('throttle:20,1');
+        Route::post('/extension/workspaces/{workspace}/jobs/linkedin', [ExtensionController::class, 'storeLinkedInJob'])->middleware('throttle:30,1');
         Route::get('/workspaces/{workspace}/summary', [WorkspaceController::class, 'summary']);
         Route::get('/workspaces/{workspace}/leads', [WorkspaceController::class, 'leads']);
         Route::post('/workspaces/{workspace}/leads', [WorkspaceController::class, 'createLead']);

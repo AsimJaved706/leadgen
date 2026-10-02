@@ -26,13 +26,13 @@ async function refreshLeadspaceContext() {
   return context;
 }
 
-async function selectedWorkspace() {
+async function selectedWorkspace(checkLeadLimit = true) {
   const stored = await leadspaceStored();
   const context = await refreshLeadspaceContext();
   const workspace = context.workspaces.find(item => item.id === Number(stored.leadspaceWorkspaceId)) || context.workspaces[0];
   if (!workspace) throw new Error('No workspace is available for this account.');
   if (!workspace.access.allowed) throw new Error(workspace.access.reason || 'This workspace cannot use the extension.');
-  if (workspace.usage.leads >= workspace.usage.limit) throw new Error('The workspace lead storage limit has been reached.');
+  if (checkLeadLimit && workspace.usage.leads >= workspace.usage.limit) throw new Error('The workspace lead storage limit has been reached.');
   return {stored, context, workspace};
 }
 
@@ -69,6 +69,16 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const listId = Number(stored.leadspaceListId);
       if (!workspace.lists.some(list => list.id === listId)) throw new Error('Choose a Lead List in the extension before saving.');
       return leadspaceApi(`/extension/workspaces/${workspace.id}/leads`, {method: 'POST', body: JSON.stringify({list_id: listId, leads: message.data})});
+    }
+    if (message.action === 'leadspaceSaveLinkedInJob') {
+      const {workspace} = await selectedWorkspace(false);
+      const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+      if (!tab?.id || !/^https:\/\/([a-z0-9-]+\.)*linkedin\.com\/jobs\//i.test(tab.url || '')) throw new Error('Open a LinkedIn job page before saving.');
+      let result;
+      try { result = await chrome.tabs.sendMessage(tab.id, {action: 'leadspaceExtractLinkedInJob'}); }
+      catch (_) { throw new Error('Reload this LinkedIn tab, then try again.'); }
+      if (!result?.ok || !result.job?.title) throw new Error(result?.error || 'Could not read this LinkedIn job. Open the full job details first.');
+      return leadspaceApi(`/extension/workspaces/${workspace.id}/jobs/linkedin`, {method: 'POST', body: JSON.stringify(result.job)});
     }
     throw new Error('Unknown Leadspace extension action.');
   };
