@@ -1,8 +1,7 @@
 {
   "name": "leadspace",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Leadspace React application",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
