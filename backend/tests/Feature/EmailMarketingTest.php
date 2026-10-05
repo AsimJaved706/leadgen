@@ -238,6 +238,25 @@ class EmailMarketingTest extends TestCase
             ->assertOk()->assertJsonPath('data.0.email', 'lead@example.test')->assertJsonPath('data.0.open_count', 1);
     }
 
+    public function test_bounced_job_email_is_suppressed_and_job_becomes_eligible_for_new_address(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+        $template = $workspace->emailTemplates()->create(['name' => 'Application', 'subject' => 'Hello', 'html_body' => '<p>Hello</p>']);
+        $job = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Developer', 'company_name' => 'Acme',
+            'country' => 'Canada', 'contact_email' => 'missing@acme.test', 'status' => 'applied', 'dedupe_hash' => hash('sha256', 'bounce-job')]);
+        $campaign = $workspace->emailCampaigns()->create(['name' => 'Applications', 'email_template_id' => $template->id, 'audience_type' => 'all', 'status' => 'completed', 'sent_count' => 1]);
+        $recipient = EmailCampaignRecipient::create(['email_campaign_id' => $campaign->id, 'job_id' => $job->id,
+            'email' => 'missing@acme.test', 'name' => 'Acme', 'status' => 'sent', 'sent_at' => now()]);
+
+        $this->actingAs($owner)->postJson('/api/workspaces/'.$workspace->id.'/email-campaigns/'.$campaign->id.'/recipients/'.$recipient->id.'/bounce', [
+            'details' => '550 5.1.1 mailbox not found',
+        ])->assertOk()->assertJsonPath('status', 'failed');
+        $this->assertDatabaseHas('email_suppressions', ['workspace_id' => $workspace->id, 'email' => 'missing@acme.test', 'reason' => 'bounce']);
+        $this->assertDatabaseHas('workspace_jobs', ['id' => $job->id, 'status' => 'new', 'contact_email' => null, 'email_discovery_status' => 'invalid']);
+        $this->assertDatabaseHas('email_campaigns', ['id' => $campaign->id, 'sent_count' => 0, 'failed_count' => 1]);
+    }
+
     public function test_monthly_email_limit_blocks_oversized_campaign_before_queueing(): void
     {
         Queue::fake();

@@ -6,6 +6,8 @@ use App\Jobs\PrepareEmailCampaign;
 use App\Models\CampaignAudienceGroup;
 use App\Models\EmailCampaign;
 use App\Models\EmailTemplate;
+use App\Models\EmailCampaignRecipient;
+use App\Models\EmailSuppression;
 use App\Models\Workspace;
 use App\Support\Audit;
 use App\Support\WorkspaceMailer;
@@ -183,8 +185,27 @@ class EmailMarketingController extends Controller
         $this->member($request, $workspace);
         abort_unless($campaign->workspace_id === $workspace->id, 404);
 
-        return $campaign->recipients()->select(['id', 'email_campaign_id', 'name', 'email', 'status', 'failure_reason', 'sent_at', 'opened_at', 'open_count', 'replied_at'])
+        return $campaign->recipients()->select(['id', 'email_campaign_id', 'lead_id', 'job_id', 'name', 'email', 'status', 'failure_reason', 'sent_at', 'opened_at', 'open_count', 'replied_at'])
             ->orderBy('id')->paginate(50);
+    }
+
+    public function markRecipientBounced(Request $request, Workspace $workspace, EmailCampaign $campaign, EmailCampaignRecipient $recipient)
+    {
+        $this->canWrite($request, $workspace);
+        abort_unless($campaign->workspace_id === $workspace->id && $recipient->email_campaign_id === $campaign->id, 404);
+        $data = $request->validate(['details' => 'nullable|string|max:2000']);
+        $email = strtolower(trim($recipient->email));
+        EmailSuppression::updateOrCreate(['workspace_id' => $workspace->id, 'email' => $email], ['reason' => 'bounce', 'details' => $data['details'] ?? 'Mailbox rejected the message.']);
+        $recipient->update(['status' => 'failed', 'failure_reason' => 'Bounced: mailbox does not exist or cannot receive mail.']);
+        if ($recipient->job_id) {
+            $recipient->job()->update(['status' => 'new', 'contact_email' => null, 'email_discovery_status' => 'invalid']);
+        }
+        $campaign->update([
+            'sent_count' => $campaign->recipients()->where('status', 'sent')->count(),
+            'failed_count' => $campaign->recipients()->where('status', 'failed')->count(),
+        ]);
+        Audit::record('email.recipient_bounced', $recipient->id, ['email' => $email], $workspace->id);
+        return $recipient->fresh();
     }
 
     public function createCampaign(Request $request, Workspace $workspace)

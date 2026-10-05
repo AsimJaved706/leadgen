@@ -68,6 +68,7 @@ Route::prefix('api')->group(function () {
         Route::delete('/workspaces/{workspace}/campaign-audience-groups/{group}', [EmailMarketingController::class, 'deleteAudienceGroup']);
         Route::get('/workspaces/{workspace}/email-campaigns', [EmailMarketingController::class, 'campaigns']);
         Route::get('/workspaces/{workspace}/email-campaigns/{campaign}/recipients', [EmailMarketingController::class, 'campaignRecipients']);
+        Route::post('/workspaces/{workspace}/email-campaigns/{campaign}/recipients/{recipient}/bounce', [EmailMarketingController::class, 'markRecipientBounced']);
         Route::post('/workspaces/{workspace}/email-campaigns', [EmailMarketingController::class, 'createCampaign']);
         Route::post('/workspaces/{workspace}/email-campaigns/{campaign}/cancel', [EmailMarketingController::class, 'cancelCampaign']);
         Route::post('/workspaces/{workspace}/email-campaigns/{campaign}/send', [EmailMarketingController::class, 'sendCampaign']);

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailUnsubscribe;
+use App\Models\EmailSuppression;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -44,6 +45,7 @@ class PrepareEmailCampaign implements ShouldQueue
                 return [];
             }
             $blocked = EmailUnsubscribe::where('workspace_id', $campaign->workspace_id)->pluck('email')->flip();
+            EmailSuppression::where('workspace_id', $campaign->workspace_id)->pluck('email')->each(fn ($email) => $blocked->put(strtolower($email), true));
             $seen = [];
             $ids = [];
             $isJobs = $campaign->audience_type === 'group';
