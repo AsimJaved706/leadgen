@@ -26,3 +26,9 @@ LOCK_FILE="$DOMAIN_ROOT/.repair-public.lock"
     find "$PUBLIC_ROOT/assets" -type f -exec chmod 644 {} +
     chmod 644 "$PUBLIC_ROOT/index.html" "$PUBLIC_ROOT/index.php" "$PUBLIC_ROOT/.htaccess"
 ) 9>"$LOCK_FILE"
+
+if [ "${1:-}" = "--watch" ]; then
+    while sleep 15; do
+        "$0"
+    done
+fi
