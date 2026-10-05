@@ -64,6 +64,29 @@ class JobsTest extends TestCase
         $this->getJson("/api/workspaces/{$workspace->id}/jobs")->assertPaymentRequired();
     }
 
+    public function test_manual_job_can_store_a_contact_email(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+
+        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs", [
+            'source_platform' => 'Manual',
+            'title' => 'Senior Full Stack Developer',
+            'company_name' => 'Example Company',
+            'contact_name' => 'Hiring Manager',
+            'contact_email' => 'Recruiter@Example.com',
+        ])->assertCreated()
+            ->assertJsonPath('contact_email', 'recruiter@example.com')
+            ->assertJsonPath('email_discovery_status', 'published');
+
+        $this->assertDatabaseHas('workspace_jobs', [
+            'workspace_id' => $workspace->id,
+            'contact_name' => 'Hiring Manager',
+            'contact_email' => 'recruiter@example.com',
+            'email_discovery_status' => 'published',
+        ]);
+    }
+
     public function test_free_feeds_sync_daily_fields_domains_and_published_emails(): void
     {
         Http::fake([

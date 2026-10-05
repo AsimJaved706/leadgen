@@ -81,6 +81,10 @@ class JobController extends Controller
     {
         $this->authorizeWorkspace($request, $workspace, true);
         $data = $this->validatedJob($request);
+        if (filled($data['contact_email'] ?? null)) {
+            $data['contact_email'] = Str::lower(trim($data['contact_email']));
+            $data['email_discovery_status'] = 'published';
+        }
         $job = $this->upsert($workspace, $data);
         Audit::record('job.saved', $job->id, ['source' => $job->source_platform], $workspace->id);
 
