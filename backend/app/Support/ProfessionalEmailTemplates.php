@@ -38,7 +38,7 @@ class ProfessionalEmailTemplates
         ];
     }
 
-    private static function fullStackDeveloperApplication(): array
+    public static function fullStackDeveloperApplication(): array
     {
         $name = 'Full Stack Developer Application';
         $subject = 'Application for Senior Full Stack Developer - Fahad Tanwir';

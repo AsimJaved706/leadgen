@@ -89,6 +89,18 @@ class EmailMarketingTest extends TestCase
         $this->putJson('/api/workspaces/'.$workspace->id.'/email-templates/'.$foreign->id, ['name' => 'Stolen', 'subject' => 'No', 'html_body' => '<p>No</p>'])->assertNotFound();
     }
 
+    public function test_full_stack_application_template_is_installed_for_workspaces(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+        \App\Support\ProfessionalEmailTemplates::install($workspace);
+        $template = $workspace->emailTemplates()->where('name', 'Full Stack Developer Application')->firstOrFail();
+        $this->assertSame('Application for Senior Full Stack Developer - Fahad Tanwir', $template->subject);
+        $this->assertStringContainsString('more than eight years', $template->text_body);
+        $this->assertStringContainsString('fahadm.dev@gmail.com', $template->html_body);
+        $this->assertTrue($template->is_active);
+    }
+
     public function test_campaign_snapshots_valid_unique_subscribed_recipients_and_queues_delivery(): void
     {
         Queue::fake([SendCampaignEmail::class]);
