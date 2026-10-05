@@ -132,6 +132,33 @@ class EmailMarketingTest extends TestCase
         Queue::assertPushed(PrepareEmailCampaign::class, 3);
     }
 
+    public function test_country_email_group_can_be_created_and_used_for_campaign(): void
+    {
+        Queue::fake([SendCampaignEmail::class]);
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+        $this->smtp($workspace);
+        $template = $workspace->emailTemplates()->create(['name' => 'Countries', 'subject' => 'Hello', 'html_body' => '<p>Hello</p>']);
+        $workspace->leads()->create(['name' => 'Canada Email', 'country' => 'Canada', 'email' => 'ca@example.test']);
+        $workspace->leads()->create(['name' => 'Canada Missing', 'country' => 'Canada']);
+        $workspace->leads()->create(['name' => 'USA Email', 'country' => 'United States', 'email' => 'us@example.test']);
+        $workspace->leads()->create(['name' => 'UK Email', 'country' => 'United Kingdom', 'email' => 'uk@example.test']);
+
+        $this->actingAs($owner)->getJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups')
+            ->assertOk()->assertJsonPath('countries.0.country', 'Canada')->assertJsonPath('countries.0.with_email', 1);
+        $group = $this->postJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups', [
+            'name' => 'North America with email', 'countries' => ['Canada', 'United States'], 'require_email' => true,
+        ])->assertCreated()->assertJsonPath('leads_count', 2)->json();
+        $campaign = $this->postJson('/api/workspaces/'.$workspace->id.'/email-campaigns', [
+            'name' => 'Regional campaign', 'email_template_id' => $template->id, 'audience_type' => 'group',
+            'campaign_audience_group_id' => $group['id'], 'send_mode' => 'draft',
+        ])->assertCreated()->assertJsonPath('audience_group.name', 'North America with email')->json();
+        EmailCampaign::findOrFail($campaign['id'])->update(['status' => 'scheduled', 'scheduled_at' => now()]);
+        (new PrepareEmailCampaign($campaign['id']))->handle();
+        $this->assertDatabaseCount('email_campaign_recipients', 2);
+        $this->assertDatabaseMissing('email_campaign_recipients', ['email' => 'uk@example.test']);
+    }
+
     public function test_active_campaign_can_be_stopped(): void
     {
         $owner = User::factory()->create();

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\PrepareEmailCampaign;
+use App\Models\CampaignAudienceGroup;
 use App\Models\EmailCampaign;
 use App\Models\EmailTemplate;
 use App\Models\Workspace;
@@ -129,11 +130,51 @@ class EmailMarketingController extends Controller
     {
         $this->member($request, $workspace);
 
-        return $workspace->emailCampaigns()->with(['template:id,name,subject', 'leadList:id,name'])
+        return $workspace->emailCampaigns()->with(['template:id,name,subject', 'leadList:id,name', 'audienceGroup:id,name'])
             ->withCount([
                 'recipients as opened_count' => fn ($query) => $query->whereNotNull('opened_at'),
                 'recipients as replied_count' => fn ($query) => $query->whereNotNull('replied_at'),
             ])->latest()->paginate(20);
+    }
+
+    public function audienceGroups(Request $request, Workspace $workspace): array
+    {
+        $this->member($request, $workspace);
+        $groups = $workspace->campaignAudienceGroups()->latest()->get()->map(function ($group) {
+            $group->setAttribute('leads_count', $group->leadsQuery()->count());
+            return $group;
+        });
+        $countries = $workspace->leads()->whereNotNull('country')->where('country', '!=', '')
+            ->select('country')->selectRaw('COUNT(*) as total')->selectRaw("SUM(CASE WHEN email IS NOT NULL AND email != '' THEN 1 ELSE 0 END) as with_email")
+            ->groupBy('country')->orderBy('country')->get();
+
+        return ['groups' => $groups, 'countries' => $countries];
+    }
+
+    public function saveAudienceGroup(Request $request, Workspace $workspace)
+    {
+        $this->canWrite($request, $workspace);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120', Rule::unique('campaign_audience_groups')->where('workspace_id', $workspace->id)],
+            'countries' => 'required|array|min:1|max:50', 'countries.*' => 'required|string|max:100|distinct',
+            'require_email' => 'required|boolean',
+        ]);
+        $available = $workspace->leads()->whereIn('country', $data['countries'])->distinct()->pluck('country')->all();
+        abort_if(count($available) !== count($data['countries']), 422, 'One or more selected countries are not available in this workspace.');
+        $group = $workspace->campaignAudienceGroups()->create($data);
+        $group->setAttribute('leads_count', $group->leadsQuery()->count());
+        Audit::record('email.audience_group_created', $group->id, ['countries' => $group->countries], $workspace->id);
+
+        return response()->json($group, 201);
+    }
+
+    public function deleteAudienceGroup(Request $request, Workspace $workspace, CampaignAudienceGroup $group)
+    {
+        $this->canWrite($request, $workspace);
+        abort_unless($group->workspace_id === $workspace->id, 404);
+        abort_if($group->campaigns()->whereIn('status', ['scheduled', 'preparing', 'sending'])->exists(), 422, 'This group is being used by an active campaign.');
+        $group->delete();
+        return response()->noContent();
     }
 
     public function campaignRecipients(Request $request, Workspace $workspace, EmailCampaign $campaign)
@@ -151,8 +192,9 @@ class EmailMarketingController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'email_template_id' => ['required', Rule::exists('email_templates', 'id')->where('workspace_id', $workspace->id)->where('is_active', true)],
-            'audience_type' => 'required|in:all,list',
+            'audience_type' => 'required|in:all,list,group',
             'lead_list_id' => ['nullable', 'required_if:audience_type,list', Rule::exists('lead_lists', 'id')->where('workspace_id', $workspace->id)],
+            'campaign_audience_group_id' => ['nullable', 'required_if:audience_type,group', Rule::exists('campaign_audience_groups', 'id')->where('workspace_id', $workspace->id)],
             'send_mode' => 'required|in:draft,now,schedule',
             'scheduled_at' => 'nullable|required_if:send_mode,schedule|date|after:now',
             'attachment' => 'nullable|file|max:5120|mimes:pdf,doc,docx,txt,rtf',
@@ -170,6 +212,7 @@ class EmailMarketingController extends Controller
             $campaign = $workspace->emailCampaigns()->create([
                 'name' => $data['name'], 'email_template_id' => $data['email_template_id'],
                 'audience_type' => $data['audience_type'], 'lead_list_id' => $data['lead_list_id'] ?? null,
+                'campaign_audience_group_id' => $data['campaign_audience_group_id'] ?? null,
                 'created_by' => $request->user()->id, 'status' => $status, 'scheduled_at' => $scheduledAt,
                 'attachment_path' => $attachmentPath,
                 'attachment_name' => $attachment ? basename($attachment->getClientOriginalName()) : null,
@@ -187,7 +230,7 @@ class EmailMarketingController extends Controller
             PrepareEmailCampaign::dispatch($campaign->id)->afterCommit();
         }
 
-        return response()->json($campaign->load(['template:id,name,subject', 'leadList:id,name']), 201);
+        return response()->json($campaign->load(['template:id,name,subject', 'leadList:id,name', 'audienceGroup:id,name']), 201);
     }
 
     public function cancelCampaign(Request $request, Workspace $workspace, EmailCampaign $campaign)

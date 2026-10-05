@@ -77,4 +77,9 @@ class Workspace extends Model
     {
         return $this->hasMany(EmailCampaign::class);
     }
+
+    public function campaignAudienceGroups()
+    {
+        return $this->hasMany(CampaignAudienceGroup::class);
+    }
 }

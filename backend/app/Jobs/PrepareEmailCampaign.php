@@ -33,9 +33,13 @@ class PrepareEmailCampaign implements ShouldQueue
                 return [];
             }
             $campaign->update(['status' => 'preparing', 'started_at' => now(), 'failure_reason' => null]);
-            $query = $campaign->audience_type === 'list' ? $campaign->leadList?->leads() : $campaign->workspace->leads();
+            $query = match ($campaign->audience_type) {
+                'list' => $campaign->leadList?->leads(),
+                'group' => $campaign->audienceGroup?->leadsQuery(),
+                default => $campaign->workspace->leads(),
+            };
             if (! $query) {
-                $campaign->update(['status' => 'failed', 'failure_reason' => 'The selected lead list no longer exists.']);
+                $campaign->update(['status' => 'failed', 'failure_reason' => 'The selected audience no longer exists.']);
 
                 return [];
             }

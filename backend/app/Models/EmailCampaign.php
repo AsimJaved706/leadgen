@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Storage;
 
 class EmailCampaign extends Model
 {
-    protected $fillable = ['email_template_id', 'lead_list_id', 'created_by', 'name', 'audience_type', 'status', 'scheduled_at', 'started_at', 'completed_at', 'recipient_count', 'sent_count', 'failed_count', 'skipped_count', 'failure_reason', 'attachment_path', 'attachment_name', 'attachment_mime', 'attachment_size'];
+    protected $fillable = ['email_template_id', 'lead_list_id', 'campaign_audience_group_id', 'created_by', 'name', 'audience_type', 'status', 'scheduled_at', 'started_at', 'completed_at', 'recipient_count', 'sent_count', 'failed_count', 'skipped_count', 'failure_reason', 'attachment_path', 'attachment_name', 'attachment_mime', 'attachment_size'];
 
     protected $hidden = ['attachment_path'];
 
@@ -38,6 +38,11 @@ class EmailCampaign extends Model
     public function leadList()
     {
         return $this->belongsTo(LeadList::class);
+    }
+
+    public function audienceGroup()
+    {
+        return $this->belongsTo(CampaignAudienceGroup::class, 'campaign_audience_group_id');
     }
 
     public function recipients()
