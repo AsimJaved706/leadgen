@@ -67,6 +67,7 @@ Route::prefix('api')->group(function () {
         Route::post('/workspaces/{workspace}/campaign-audience-groups', [EmailMarketingController::class, 'saveAudienceGroup']);
         Route::delete('/workspaces/{workspace}/campaign-audience-groups/{group}', [EmailMarketingController::class, 'deleteAudienceGroup']);
         Route::get('/workspaces/{workspace}/email-campaigns', [EmailMarketingController::class, 'campaigns']);
+        Route::post('/workspaces/{workspace}/email-campaigns/sync-replies', [EmailMarketingController::class, 'syncReplies'])->middleware('throttle:6,1');
         Route::get('/workspaces/{workspace}/email-campaigns/{campaign}/recipients', [EmailMarketingController::class, 'campaignRecipients']);
         Route::post('/workspaces/{workspace}/email-campaigns/{campaign}/recipients/{recipient}/bounce', [EmailMarketingController::class, 'markRecipientBounced']);
         Route::post('/workspaces/{workspace}/email-campaigns', [EmailMarketingController::class, 'createCampaign']);

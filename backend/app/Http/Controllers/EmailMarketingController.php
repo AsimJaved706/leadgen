@@ -11,6 +11,7 @@ use App\Models\EmailSuppression;
 use App\Models\Workspace;
 use App\Support\Audit;
 use App\Support\WorkspaceMailer;
+use App\Services\WorkspaceReplySync;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Storage;
@@ -187,6 +188,19 @@ class EmailMarketingController extends Controller
 
         return $campaign->recipients()->select(['id', 'email_campaign_id', 'lead_id', 'job_id', 'name', 'email', 'status', 'failure_reason', 'sent_at', 'opened_at', 'open_count', 'replied_at'])
             ->orderBy('id')->paginate(50);
+    }
+
+    public function syncReplies(Request $request, Workspace $workspace, WorkspaceReplySync $sync): array
+    {
+        $this->canWrite($request, $workspace);
+        try {
+            $result = $sync->sync($workspace);
+        } catch (\Throwable $exception) {
+            abort(422, mb_substr($exception->getMessage(), 0, 500));
+        }
+        Audit::record('email.replies_synced', null, $result, $workspace->id);
+
+        return $result;
     }
 
     public function markRecipientBounced(Request $request, Workspace $workspace, EmailCampaign $campaign, EmailCampaignRecipient $recipient)
