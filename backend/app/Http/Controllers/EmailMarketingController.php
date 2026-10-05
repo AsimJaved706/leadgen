@@ -141,11 +141,11 @@ class EmailMarketingController extends Controller
     {
         $this->member($request, $workspace);
         $groups = $workspace->campaignAudienceGroups()->latest()->get()->map(function ($group) {
-            $group->setAttribute('leads_count', $group->leadsQuery()->count());
+            $group->setAttribute('jobs_count', $group->jobsQuery()->count());
             return $group;
         });
-        $countries = $workspace->leads()->whereNotNull('country')->where('country', '!=', '')
-            ->select('country')->selectRaw('COUNT(*) as total')->selectRaw("SUM(CASE WHEN email IS NOT NULL AND email != '' THEN 1 ELSE 0 END) as with_email")
+        $countries = CampaignAudienceGroup::eligibleJobs($workspace)->whereNotNull('country')->where('country', '!=', '')
+            ->select('country')->selectRaw('COUNT(*) as total')->selectRaw('COUNT(*) as with_email')
             ->groupBy('country')->orderBy('country')->get();
 
         return ['groups' => $groups, 'countries' => $countries];
@@ -159,10 +159,11 @@ class EmailMarketingController extends Controller
             'countries' => 'required|array|min:1|max:50', 'countries.*' => 'required|string|max:100|distinct',
             'require_email' => 'required|boolean',
         ]);
-        $available = $workspace->leads()->whereIn('country', $data['countries'])->distinct()->pluck('country')->all();
+        $data['require_email'] = true;
+        $available = $workspace->jobs()->whereIn('country', $data['countries'])->distinct()->pluck('country')->all();
         abort_if(count($available) !== count($data['countries']), 422, 'One or more selected countries are not available in this workspace.');
         $group = $workspace->campaignAudienceGroups()->create($data);
-        $group->setAttribute('leads_count', $group->leadsQuery()->count());
+        $group->setAttribute('jobs_count', $group->jobsQuery()->count());
         Audit::record('email.audience_group_created', $group->id, ['countries' => $group->countries], $workspace->id);
 
         return response()->json($group, 201);

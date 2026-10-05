@@ -11,9 +11,17 @@ class CampaignAudienceGroup extends Model
     public function workspace() { return $this->belongsTo(Workspace::class); }
     public function campaigns() { return $this->hasMany(EmailCampaign::class); }
 
-    public function leadsQuery()
+    public function jobsQuery()
     {
-        return $this->workspace->leads()->whereIn('country', $this->countries ?: [])
-            ->when($this->require_email, fn ($query) => $query->whereNotNull('email')->where('email', '!=', ''));
+        return self::eligibleJobs($this->workspace)->whereIn('country', $this->countries ?: []);
+    }
+
+    public static function eligibleJobs(Workspace $workspace)
+    {
+        $alreadyEmailed = EmailCampaignRecipient::query()->select('email')->where('status', 'sent')
+            ->whereHas('campaign', fn ($query) => $query->where('workspace_id', $workspace->id));
+
+        return $workspace->jobs()->where('status', '!=', 'applied')->whereNotNull('contact_email')
+            ->where('contact_email', '!=', '')->whereNotIn('contact_email', $alreadyEmailed);
     }
 }

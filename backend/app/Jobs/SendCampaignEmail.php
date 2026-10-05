@@ -41,7 +41,7 @@ class SendCampaignEmail implements ShouldQueue
             }
             $recipient->update(['status' => 'processing', 'failure_reason' => null]);
 
-            return $recipient->load(['campaign.template', 'campaign.workspace.emailSetting', 'lead']);
+            return $recipient->load(['campaign.template', 'campaign.workspace.emailSetting', 'lead', 'job']);
         });
         if (! $recipient) {
             return;
@@ -52,7 +52,11 @@ class SendCampaignEmail implements ShouldQueue
             if (! $setting?->is_active) {
                 throw new \RuntimeException('SMTP is not active.');
             }
-            $lead = $recipient->lead?->toArray() ?? ['name' => $recipient->name, 'email' => $recipient->email];
+            $lead = $recipient->job ? [
+                'name' => $recipient->job->company_name ?: $recipient->job->title,
+                'email' => $recipient->email, 'phone' => '', 'website' => $recipient->job->company_website,
+                'city' => $recipient->job->location, 'country' => $recipient->job->country, 'category' => $recipient->job->title,
+            ] : ($recipient->lead?->toArray() ?? ['name' => $recipient->name, 'email' => $recipient->email]);
             $subject = html_entity_decode(strip_tags(WorkspaceMailer::render($campaign->template->subject, $lead)), ENT_QUOTES | ENT_HTML5);
             $text = $campaign->template->text_body ? html_entity_decode(strip_tags(WorkspaceMailer::render($campaign->template->text_body, $lead)), ENT_QUOTES | ENT_HTML5) : null;
             $unsubscribe = URL::signedRoute('email.unsubscribe', ['recipient' => $recipient->id]);
@@ -82,6 +86,9 @@ class SendCampaignEmail implements ShouldQueue
             DB::transaction(function () use ($recipient) {
                 $fresh = EmailCampaignRecipient::whereKey($recipient->id)->lockForUpdate()->firstOrFail();
                 $fresh->update(['status' => 'sent', 'sent_at' => now(), 'failure_reason' => null]);
+                if ($fresh->job_id) {
+                    $fresh->job()->where('status', '!=', 'applied')->update(['status' => 'applied']);
+                }
                 $this->refreshCampaign($fresh->campaign);
             });
         } catch (Throwable $exception) {

@@ -139,16 +139,17 @@ class EmailMarketingTest extends TestCase
         $workspace = $this->workspace($owner);
         $this->smtp($workspace);
         $template = $workspace->emailTemplates()->create(['name' => 'Countries', 'subject' => 'Hello', 'html_body' => '<p>Hello</p>']);
-        $workspace->leads()->create(['name' => 'Canada Email', 'country' => 'Canada', 'email' => 'ca@example.test']);
-        $workspace->leads()->create(['name' => 'Canada Missing', 'country' => 'Canada']);
-        $workspace->leads()->create(['name' => 'USA Email', 'country' => 'United States', 'email' => 'us@example.test']);
-        $workspace->leads()->create(['name' => 'UK Email', 'country' => 'United Kingdom', 'email' => 'uk@example.test']);
+        $canada = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Canada Developer', 'company_name' => 'Canada Co', 'country' => 'Canada', 'contact_email' => 'ca@example.test', 'dedupe_hash' => hash('sha256', 'ca')]);
+        $workspace->jobs()->create(['source_platform' => 'Indeed', 'title' => 'Canada Missing', 'country' => 'Canada', 'dedupe_hash' => hash('sha256', 'ca-missing')]);
+        $usa = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'USA Developer', 'country' => 'United States', 'contact_email' => 'us@example.test', 'dedupe_hash' => hash('sha256', 'us')]);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Already applied', 'country' => 'United States', 'contact_email' => 'applied@example.test', 'status' => 'applied', 'dedupe_hash' => hash('sha256', 'applied')]);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'UK Developer', 'country' => 'United Kingdom', 'contact_email' => 'uk@example.test', 'dedupe_hash' => hash('sha256', 'uk')]);
 
         $this->actingAs($owner)->getJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups')
             ->assertOk()->assertJsonPath('countries.0.country', 'Canada')->assertJsonPath('countries.0.with_email', 1);
         $group = $this->postJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups', [
             'name' => 'North America with email', 'countries' => ['Canada', 'United States'], 'require_email' => true,
-        ])->assertCreated()->assertJsonPath('leads_count', 2)->json();
+        ])->assertCreated()->assertJsonPath('jobs_count', 2)->json();
         $campaign = $this->postJson('/api/workspaces/'.$workspace->id.'/email-campaigns', [
             'name' => 'Regional campaign', 'email_template_id' => $template->id, 'audience_type' => 'group',
             'campaign_audience_group_id' => $group['id'], 'send_mode' => 'draft',
@@ -156,7 +157,13 @@ class EmailMarketingTest extends TestCase
         EmailCampaign::findOrFail($campaign['id'])->update(['status' => 'scheduled', 'scheduled_at' => now()]);
         (new PrepareEmailCampaign($campaign['id']))->handle();
         $this->assertDatabaseCount('email_campaign_recipients', 2);
+        $this->assertDatabaseHas('email_campaign_recipients', ['job_id' => $canada->id, 'email' => 'ca@example.test']);
+        $this->assertDatabaseHas('email_campaign_recipients', ['job_id' => $usa->id, 'email' => 'us@example.test']);
         $this->assertDatabaseMissing('email_campaign_recipients', ['email' => 'uk@example.test']);
+        $this->assertDatabaseMissing('email_campaign_recipients', ['email' => 'applied@example.test']);
+        EmailCampaignRecipient::where('email', 'ca@example.test')->update(['status' => 'sent', 'sent_at' => now()]);
+        $this->getJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups')
+            ->assertOk()->assertJsonPath('groups.0.jobs_count', 1);
     }
 
     public function test_active_campaign_can_be_stopped(): void

@@ -22,4 +22,9 @@ class EmailCampaignRecipient extends Model
     {
         return $this->belongsTo(Lead::class);
     }
+
+    public function job()
+    {
+        return $this->belongsTo(Job::class);
+    }
 }
