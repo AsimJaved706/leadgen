@@ -50,4 +50,15 @@ final class RecruitmentEmail
     {
         return ['published', 'published_job', 'recruitment_page', 'manual_verified'];
     }
+
+    public static function blockedPrefixes(): array
+    {
+        return array_values(array_unique([...self::BLOCKED_LOCALS, 'customer']));
+    }
+
+    public static function isCampaignEligible(?string $email, ?string $status): bool
+    {
+        return in_array($status, self::eligibleStatuses(), true)
+            && self::normalize($email) !== null && ! self::isBlocked($email);
+    }
 }

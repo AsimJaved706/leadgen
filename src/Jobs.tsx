@@ -12,7 +12,7 @@ type Job = {
   salary_min?:number|null; salary_max?:number|null; salary_currency?:string|null; salary_period?:string|null;
   description?:string|null; requirements?:string|null; contact_name?:string|null; contact_email?:string|null; email_discovery_status?:string;
   status:string; posted_at?:string|null; expires_at?:string|null; created_at:string; metadata?:Record<string,unknown>|null;
-  trust_score:number; risk_level:'low'|'review'|'high'; risk_reasons:string[]; opportunity_score:number;
+  trust_score:number; risk_level:'low'|'review'|'high'; risk_reasons:string[]; opportunity_score:number; campaign_email_eligible:boolean;
 };
 type FilterValue={source_platform?:string;country?:string;workplace_type?:string;total:number};
 type SyncRun={id:number;status:string;created_count:number;updated_count:number;failed_count:number;started_at:string;finished_at?:string|null};
@@ -25,7 +25,7 @@ const statuses=['new','saved','applied','interview','rejected','closed'];
 const label=(value:string)=>value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 const date=(value?:string|null)=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(new Date(value)):'Not provided';
 const plainText=(value:string)=>new DOMParser().parseFromString(value,'text/html').body.textContent||'';
-const campaignReadyEmail=(job:Job)=>!!job.contact_email&&['published','published_job','recruitment_page','manual_verified'].includes(job.email_discovery_status||'');
+const campaignReadyEmail=(job:Job)=>job.campaign_email_eligible;
 
 export function Jobs({workspaceId,onNavigate}:{workspaceId:number;onNavigate?:(tab:string)=>void}){
  const cache=useQueryClient();

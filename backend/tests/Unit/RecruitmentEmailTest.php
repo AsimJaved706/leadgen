@@ -28,4 +28,10 @@ class RecruitmentEmailTest extends TestCase
         $this->assertNull(RecruitmentEmail::acceptWebsite('jsmith@company.com'));
         $this->assertSame('jsmith@company.com', RecruitmentEmail::acceptPublished('JSmith@Company.com'));
     }
+
+    public function test_legacy_status_cannot_make_a_support_address_campaign_eligible(): void
+    {
+        $this->assertFalse(RecruitmentEmail::isCampaignEligible('support@company.com', 'published'));
+        $this->assertTrue(RecruitmentEmail::isCampaignEligible('careers@company.com', 'published'));
+    }
 }

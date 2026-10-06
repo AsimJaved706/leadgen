@@ -10,7 +10,7 @@ class Job extends Model
     protected $table = 'workspace_jobs';
 
     protected $guarded = ['id', 'workspace_id'];
-    protected $appends = ['trust_score', 'risk_level', 'risk_reasons', 'opportunity_score'];
+    protected $appends = ['trust_score', 'risk_level', 'risk_reasons', 'opportunity_score', 'campaign_email_eligible'];
 
     protected function casts(): array
     {
@@ -30,8 +30,17 @@ class Job extends Model
 
     public function scopeHasCampaignEmail($query)
     {
-        return $query->whereNotNull('contact_email')->where('contact_email', '!=', '')
+        $query->whereNotNull('contact_email')->where('contact_email', '!=', '')
             ->whereIn('email_discovery_status', RecruitmentEmail::eligibleStatuses());
+        foreach (RecruitmentEmail::blockedPrefixes() as $prefix) {
+            $query->whereRaw('LOWER(contact_email) NOT LIKE ?', [$prefix.'%']);
+        }
+        return $query;
+    }
+
+    public function getCampaignEmailEligibleAttribute(): bool
+    {
+        return RecruitmentEmail::isCampaignEligible($this->contact_email, $this->email_discovery_status);
     }
 
     private function assessment(): array
