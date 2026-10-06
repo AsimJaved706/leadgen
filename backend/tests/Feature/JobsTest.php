@@ -77,13 +77,13 @@ class JobsTest extends TestCase
             'contact_email' => 'Recruiter@Example.com',
         ])->assertCreated()
             ->assertJsonPath('contact_email', 'recruiter@example.com')
-            ->assertJsonPath('email_discovery_status', 'published');
+            ->assertJsonPath('email_discovery_status', 'manual_verified');
 
         $this->assertDatabaseHas('workspace_jobs', [
             'workspace_id' => $workspace->id,
             'contact_name' => 'Hiring Manager',
             'contact_email' => 'recruiter@example.com',
-            'email_discovery_status' => 'published',
+            'email_discovery_status' => 'manual_verified',
         ]);
     }
 
@@ -107,7 +107,7 @@ class JobsTest extends TestCase
         $workspace = $this->workspace($user);
         $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/sync")
             ->assertOk()->assertJsonPath('created_count', 2)->assertJsonPath('status', 'completed');
-        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'h-1', 'contact_email' => 'careers@examplelabs.com', 'email_discovery_status' => 'published']);
+        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'h-1', 'contact_email' => 'careers@examplelabs.com', 'email_discovery_status' => 'published_job']);
         $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'r-1', 'company_domain' => 'acme.test', 'email_discovery_status' => 'not_found']);
         $this->getJson("/api/workspaces/{$workspace->id}/jobs/filters")
             ->assertOk()->assertJsonPath('with_email', 1)->assertJsonPath('with_domain', 1)->assertJsonPath('latest_sync.status', 'completed');
@@ -168,7 +168,7 @@ class JobsTest extends TestCase
         $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'source_url' => 'https://linkedin.com/jobs/1',
             'title' => 'Remote Developer', 'company_name' => 'Acme', 'company_domain' => 'acme.test',
             'workplace_type' => 'remote', 'contact_email' => 'jobs@acme.test', 'description' => str_repeat('Detailed role information. ', 30),
-            'posted_at' => now(), 'dedupe_hash' => hash('sha256', 'scored')]);
+            'posted_at' => now(), 'email_discovery_status' => 'published_job', 'dedupe_hash' => hash('sha256', 'scored')]);
         $workspace->jobs()->create(['source_platform' => 'Unknown', 'title' => 'Other', 'dedupe_hash' => hash('sha256', 'no-email')]);
 
         $this->actingAs($user)->getJson("/api/workspaces/{$workspace->id}/jobs?email_status=with_email")

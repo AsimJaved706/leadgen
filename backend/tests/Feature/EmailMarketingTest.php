@@ -151,11 +151,11 @@ class EmailMarketingTest extends TestCase
         $workspace = $this->workspace($owner);
         $this->smtp($workspace);
         $template = $workspace->emailTemplates()->create(['name' => 'Countries', 'subject' => 'Hello', 'html_body' => '<p>Hello</p>']);
-        $canada = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Canada Developer', 'company_name' => 'Canada Co', 'country' => 'Canada', 'contact_email' => 'ca@example.test', 'dedupe_hash' => hash('sha256', 'ca')]);
+        $canada = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Canada Developer', 'company_name' => 'Canada Co', 'country' => 'Canada', 'contact_email' => 'ca@example.test', 'email_discovery_status' => 'published_job', 'dedupe_hash' => hash('sha256', 'ca')]);
         $workspace->jobs()->create(['source_platform' => 'Indeed', 'title' => 'Canada Missing', 'country' => 'Canada', 'dedupe_hash' => hash('sha256', 'ca-missing')]);
-        $usa = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'USA Developer', 'country' => 'United States', 'contact_email' => 'us@example.test', 'dedupe_hash' => hash('sha256', 'us')]);
-        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Already applied', 'country' => 'United States', 'contact_email' => 'applied@example.test', 'status' => 'applied', 'dedupe_hash' => hash('sha256', 'applied')]);
-        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'UK Developer', 'country' => 'United Kingdom', 'contact_email' => 'uk@example.test', 'dedupe_hash' => hash('sha256', 'uk')]);
+        $usa = $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'USA Developer', 'country' => 'United States', 'contact_email' => 'us@example.test', 'email_discovery_status' => 'published_job', 'dedupe_hash' => hash('sha256', 'us')]);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Already applied', 'country' => 'United States', 'contact_email' => 'applied@example.test', 'email_discovery_status' => 'published_job', 'status' => 'applied', 'dedupe_hash' => hash('sha256', 'applied')]);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'UK Developer', 'country' => 'United Kingdom', 'contact_email' => 'uk@example.test', 'email_discovery_status' => 'published_job', 'dedupe_hash' => hash('sha256', 'uk')]);
 
         $this->actingAs($owner)->getJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups')
             ->assertOk()->assertJsonPath('countries.0.country', 'Canada')->assertJsonPath('countries.0.with_email', 1);

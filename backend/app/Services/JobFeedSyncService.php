@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Support\RecruitmentEmail;
+
 use App\Models\JobSyncRun;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\Http;
@@ -116,7 +118,7 @@ class JobFeedSyncService
             'salary_min' => $job['minSalary'] ?? null, 'salary_max' => $job['maxSalary'] ?? null,
             'salary_currency' => $job['currency'] ?? null, 'salary_period' => $job['salaryPeriod'] ?? null,
             'description' => $description, 'contact_email' => $email,
-            'email_discovery_status' => $email ? 'published' : 'not_found', 'email_source' => $email ? 'job_description' : null,
+            'email_discovery_status' => $email ? 'published_job' : 'not_found', 'email_source' => $email ? 'job_description' : null,
             'posted_at' => isset($job['pubDate']) ? date('Y-m-d H:i:s', (int) $job['pubDate']) : null,
             'expires_at' => isset($job['expiryDate']) ? date('Y-m-d H:i:s', (int) $job['expiryDate']) : null,
             'scraped_at' => now(), 'enriched_at' => now(), 'status' => 'new', 'metadata' => $job,
@@ -136,7 +138,7 @@ class JobFeedSyncService
             'location' => $job['location'] ?? null, 'country' => $job['location'] ?? null, 'workplace_type' => 'remote',
             'employment_type' => $job['type'] ?? null, 'seniority_level' => $job['level'] ?? null,
             'description' => $description, 'contact_email' => $email,
-            'email_discovery_status' => $email ? 'published' : 'not_found', 'email_source' => $email ? 'job_description' : null,
+            'email_discovery_status' => $email ? 'published_job' : 'not_found', 'email_source' => $email ? 'job_description' : null,
             'posted_at' => $job['postedDate'] ?? null, 'scraped_at' => now(), 'enriched_at' => now(),
             'status' => 'new', 'metadata' => $job,
         ];
@@ -179,7 +181,7 @@ class JobFeedSyncService
             'company_name' => $fields['company'], 'location' => $fields['location'], 'country' => $fields['location'],
             'workplace_type' => 'remote', 'employment_type' => $fields['type'] ?? null,
             'seniority_level' => $fields['level'] ?? null, 'description' => $description,
-            'contact_email' => $email, 'email_discovery_status' => $email ? 'published' : 'not_found',
+            'contact_email' => $email, 'email_discovery_status' => $email ? 'published_job' : 'not_found',
             'email_source' => $email ? 'job_description' : null, 'posted_at' => $fields['date'] ?? null,
             'scraped_at' => now(), 'enriched_at' => now(), 'status' => 'new', 'metadata' => $raw,
         ];
@@ -191,7 +193,7 @@ class JobFeedSyncService
         $text = html_entity_decode(strip_tags($content));
         preg_match_all('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', $text, $matches);
         foreach (array_unique(array_map('strtolower', $matches[0] ?? [])) as $email) {
-            if (! preg_match('/^(no-?reply|noreply|example)@/', $email) && filter_var($email, FILTER_VALIDATE_EMAIL)) return $email;
+            if ($accepted = RecruitmentEmail::acceptPublished($email)) return $accepted;
         }
         return null;
     }

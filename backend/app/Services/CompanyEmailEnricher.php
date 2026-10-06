@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Workspace;
+use App\Support\RecruitmentEmail;
 use Illuminate\Support\Facades\Http;
 
 class CompanyEmailEnricher
@@ -10,14 +11,14 @@ class CompanyEmailEnricher
     public function enrich(Workspace $workspace, int $limit = 25): array
     {
         $checked = $found = 0;
-        $jobs = $workspace->jobs()->whereNull('contact_email')->whereNotNull('company_website')
+        $jobs = $workspace->jobs()->where(fn ($query) => $query->whereNull('contact_email')->orWhereNotIn('email_discovery_status', RecruitmentEmail::eligibleStatuses()))->whereNotNull('company_website')
             ->where('company_website', '!=', '')->orderBy('enriched_at')->limit($limit)->get();
         foreach ($jobs as $job) {
             $checked++;
             $result = $this->find($job->company_website);
             $job->update([
                 'contact_email' => $result['email'],
-                'email_discovery_status' => $result['email'] ? 'published_web' : 'not_found',
+                'email_discovery_status' => $result['email'] ? 'recruitment_page' : 'not_found',
                 'email_source' => $result['url'], 'enriched_at' => now(),
             ]);
             if ($result['email']) $found++;
@@ -50,8 +51,7 @@ class CompanyEmailEnricher
         $text = html_entity_decode(strip_tags($html));
         preg_match_all('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i', $text, $matches);
         $emails = array_values(array_unique(array_map('strtolower', $matches[0] ?? [])));
-        $emails = array_filter($emails, fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL)
-            && ! preg_match('/^(no-?reply|noreply|privacy|abuse|example)@/', $email));
+        $emails = array_filter($emails, fn ($email) => RecruitmentEmail::acceptWebsite($email));
         usort($emails, function ($a, $b) use ($companyHost) {
             $score = fn ($email) => (str_ends_with($email, '@'.$companyHost) ? 10 : 0)
                 + (preg_match('/^(careers|jobs|recruit|recruiting|talent|hr|people)@/', $email) ? 20 : 0);

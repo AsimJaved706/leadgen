@@ -22,7 +22,7 @@ class CampaignAudienceGroup extends Model
             ->whereHas('campaign', fn ($query) => $query->where('workspace_id', $workspace->id));
         $suppressed = EmailSuppression::query()->select('email')->where('workspace_id', $workspace->id);
 
-        return $workspace->jobs()->where('status', '!=', 'applied')->whereNotNull('contact_email')
-            ->where('contact_email', '!=', '')->whereNotIn('contact_email', $alreadyEmailed)->whereNotIn('contact_email', $suppressed);
+        return $workspace->jobs()->where('status', '!=', 'applied')->hasCampaignEmail()
+            ->whereNotIn('contact_email', $alreadyEmailed)->whereNotIn('contact_email', $suppressed);
     }
 }

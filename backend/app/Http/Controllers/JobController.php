@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Job;
 use App\Models\Workspace;
 use App\Support\Audit;
+use App\Support\RecruitmentEmail;
 use App\Services\JobFeedSyncService;
 use App\Services\CompanyEmailEnricher;
 use Illuminate\Http\Request;
@@ -53,7 +54,7 @@ class JobController extends Controller
 
         return ['sources' => $values('source_platform'), 'countries' => $values('country'),
             'workplace_types' => $values('workplace_type'), 'statuses' => self::STATUSES,
-            'with_email' => $workspace->jobs()->whereNotNull('contact_email')->count(),
+            'with_email' => $workspace->jobs()->hasCampaignEmail()->count(),
             'with_domain' => $workspace->jobs()->whereNotNull('company_domain')->count(),
             'latest_sync' => $workspace->jobSyncRuns()->latest('started_at')->first(),
         ];
@@ -82,8 +83,8 @@ class JobController extends Controller
         $this->authorizeWorkspace($request, $workspace, true);
         $data = $this->validatedJob($request);
         if (filled($data['contact_email'] ?? null)) {
-            $data['contact_email'] = Str::lower(trim($data['contact_email']));
-            $data['email_discovery_status'] = 'published';
+            $data['contact_email'] = RecruitmentEmail::normalize($data['contact_email']);
+            $data['email_discovery_status'] = 'manual_verified';
         }
         $job = $this->upsert($workspace, $data);
         Audit::record('job.saved', $job->id, ['source' => $job->source_platform], $workspace->id);
@@ -164,8 +165,8 @@ class JobController extends Controller
             ->when($data['source'] ?? null, fn ($q, $v) => $q->where('source_platform', $v))
             ->when($data['country'] ?? null, fn ($q, $v) => $q->where('country', $v))
             ->when($data['workplace_type'] ?? null, fn ($q, $v) => $q->where('workplace_type', $v))
-            ->when(($data['email_status'] ?? null) === 'with_email', fn ($q) => $q->whereNotNull('contact_email')->where('contact_email', '!=', ''))
-            ->when(($data['email_status'] ?? null) === 'without_email', fn ($q) => $q->where(fn ($inner) => $inner->whereNull('contact_email')->orWhere('contact_email', '')))
+            ->when(($data['email_status'] ?? null) === 'with_email', fn ($q) => $q->hasCampaignEmail())
+            ->when(($data['email_status'] ?? null) === 'without_email', fn ($q) => $q->where(fn ($inner) => $inner->whereNull('contact_email')->orWhere('contact_email', '')->orWhereNotIn('email_discovery_status', RecruitmentEmail::eligibleStatuses())))
             ->when($data['status'] ?? null, fn ($q, $v) => $q->where('status', $v));
     }
 
@@ -210,7 +211,8 @@ class JobController extends Controller
             'salary_currency' => $get(['salary_currency', 'currency']), 'salary_period' => $get(['salary_period', 'pay_period']),
             'description' => $get(['description', 'job_description', 'summary']),
             'requirements' => $get(['requirements', 'qualifications']), 'contact_name' => $get(['contact_name', 'recruiter_name']),
-            'contact_email' => $get(['contact_email', 'recruiter_email', 'email']), 'status' => $get(['status']) ?: 'new',
+            'contact_email' => RecruitmentEmail::isRecruitmentRole($get(['contact_email', 'recruiter_email', 'email'])) ? RecruitmentEmail::normalize($get(['contact_email', 'recruiter_email', 'email'])) : null,
+            'email_discovery_status' => RecruitmentEmail::isRecruitmentRole($get(['contact_email', 'recruiter_email', 'email'])) ? 'recruitment_page' : 'unverified', 'status' => $get(['status']) ?: 'new',
             'posted_at' => $get(['posted_at', 'date_posted', 'posted_date']), 'expires_at' => $get(['expires_at', 'valid_through']),
             'scraped_at' => now(), 'metadata' => $raw,
         ];

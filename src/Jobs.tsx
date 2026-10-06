@@ -25,6 +25,7 @@ const statuses=['new','saved','applied','interview','rejected','closed'];
 const label=(value:string)=>value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 const date=(value?:string|null)=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(new Date(value)):'Not provided';
 const plainText=(value:string)=>new DOMParser().parseFromString(value,'text/html').body.textContent||'';
+const campaignReadyEmail=(job:Job)=>!!job.contact_email&&['published','published_job','recruitment_page','manual_verified'].includes(job.email_discovery_status||'');
 
 export function Jobs({workspaceId,onNavigate}:{workspaceId:number;onNavigate?:(tab:string)=>void}){
  const cache=useQueryClient();
@@ -71,13 +72,13 @@ export function Jobs({workspaceId,onNavigate}:{workspaceId:number;onNavigate?:(t
    <select aria-label="Country" value={country} onChange={e=>{setCountry(e.target.value);setPage(1)}}><option value="">All countries</option>{filters.data?.countries.map(v=><option key={v.country} value={v.country}>{v.country} ({v.total})</option>)}</select>
    <select aria-label="Workplace type" value={workplace} onChange={e=>{setWorkplace(e.target.value);setPage(1)}}><option value="">All workplace types</option>{filters.data?.workplace_types.map(v=><option key={v.workplace_type} value={v.workplace_type}>{label(v.workplace_type||'unknown')} ({v.total})</option>)}</select>
    <select aria-label="Application status" value={status} onChange={e=>{setStatus(e.target.value);setPage(1)}}><option value="">All statuses</option>{statuses.map(v=><option key={v} value={v}>{label(v)}</option>)}</select>
-   <select aria-label="Email availability" value={emailStatus} onChange={e=>{setEmailStatus(e.target.value);setPage(1)}}><option value="">All email results</option><option value="with_email">With email</option><option value="without_email">Without email</option></select>
+   <select aria-label="Email availability" value={emailStatus} onChange={e=>{setEmailStatus(e.target.value);setPage(1)}}><option value="">All email results</option><option value="with_email">Campaign-ready email</option><option value="without_email">Needs verified email</option></select>
    {(search||source||country||workplace||status||emailStatus)&&<button className="button" onClick={clear}>Clear</button>}
   </div></section>
   <section className="platform-card jobs-table-card">
    {jobs.isLoading?<div className="jobs-loading">Loading jobs…</div>:jobs.isError?<div className="platform-empty"><h2>Jobs could not be loaded</h2><p>{(jobs.error as Error).message}</p><button className="button" onClick={()=>jobs.refetch()}>Try again</button></div>:jobs.data?.data.length?<>
     <div className="table-scroll"><table className="platform-table jobs-table"><thead><tr><th>Job</th><th>Source</th><th>Location</th><th>Quality</th><th>Data received</th><th>Status</th><th>Actions</th></tr></thead><tbody>{jobs.data.data.map(job=><tr key={job.id}>
-     <td><strong>{job.title}</strong><small className="cell-subtitle">{job.company_name||'Company not provided'}{job.employment_type?` · ${job.employment_type}`:''}</small><span className="job-enrichment">{job.company_domain&&<span><Globe2 size={11}/>{job.company_domain}</span>}{job.contact_email&&<span className="has-email"><Mail size={11}/>Email found</span>}</span></td>
+     <td><strong>{job.title}</strong><small className="cell-subtitle">{job.company_name||'Company not provided'}{job.employment_type?` · ${job.employment_type}`:''}</small><span className="job-enrichment">{job.company_domain&&<span><Globe2 size={11}/>{job.company_domain}</span>}{campaignReadyEmail(job)?<span className="has-email"><Mail size={11}/>Campaign-ready email</span>:job.contact_email&&<span className="email-review"><Mail size={11}/>Email needs review</span>}</span></td>
      <td><span className="job-source">{job.source_platform}</span></td>
      <td className="job-location">{job.location||job.country||'Not provided'}<small className="cell-subtitle">{label(job.workplace_type||'unknown')}</small></td>
      <td><div className="job-score"><strong>{job.trust_score}</strong><span className={`risk-${job.risk_level}`}>{label(job.risk_level)} risk</span><small>{job.opportunity_score}% opportunity</small></div></td>

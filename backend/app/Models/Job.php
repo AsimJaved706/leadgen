@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\RecruitmentEmail;
 use Illuminate\Database\Eloquent\Model;
 
 class Job extends Model
@@ -25,6 +26,12 @@ class Job extends Model
     public function workspace()
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    public function scopeHasCampaignEmail($query)
+    {
+        return $query->whereNotNull('contact_email')->where('contact_email', '!=', '')
+            ->whereIn('email_discovery_status', RecruitmentEmail::eligibleStatuses());
     }
 
     private function assessment(): array
