@@ -147,6 +147,24 @@ class JobsTest extends TestCase
             ->assertOk()->assertJsonPath('requests.0.status', 'completed');
     }
 
+    public function test_worker_queues_email_discovery_only_once_each_day(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $token = $user->createToken('ec2-daily', ['jobs:write'], now()->addDay())->plainTextToken;
+
+        $claim = $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertOk()
+            ->assertJsonPath('type', 'enrich')->assertJsonPath('status', 'running')
+            ->assertJsonPath('parameters.trigger', 'daily')->assertJsonPath('parameters.limit', 1000)->json();
+        $this->withToken($token)->postJson("/api/worker/job-requests/{$claim['id']}/complete", [
+            'status' => 'completed', 'result' => ['checked' => 1000, 'found' => 12],
+        ])->assertOk();
+
+        $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertNoContent();
+        $this->assertDatabaseCount('job_worker_requests', 1);
+        $this->assertDatabaseHas('job_worker_requests', ['workspace_id' => $workspace->id, 'type' => 'enrich', 'status' => 'completed']);
+    }
+
     public function test_jobs_are_sorted_by_arrival_date_and_owner_can_delete_all(): void
     {
         $owner = User::factory()->create();

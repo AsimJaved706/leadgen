@@ -72,5 +72,3 @@ Artisan::command('jobs:enrich {--workspace=} {--limit=25}', function (CompanyEma
         $this->line("Workspace {$workspace->id}: checked {$result['checked']}, found {$result['found']} public emails");
     });
 })->purpose('Find publicly listed contact emails on employer websites');
-
-Schedule::command('jobs:enrich --limit=25')->dailyAt('03:30')->withoutOverlapping()->onOneServer();

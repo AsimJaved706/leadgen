@@ -46,6 +46,19 @@ class JobWorkerController extends Controller
         $job = DB::transaction(function () use ($request) {
             $workspaceIds = $request->user()->workspaces()->pluck('workspaces.id');
             $job = JobWorkerRequest::whereIn('workspace_id', $workspaceIds)->where('status', 'pending')->oldest()->lockForUpdate()->first();
+            if (! $job) {
+                Workspace::query()->whereIn('id', $workspaceIds)->whereNull('suspended_at')
+                    ->whereHas('plan', fn ($query) => $query->where('slug', '!=', 'free'))
+                    ->lockForUpdate()->get()->each(function (Workspace $workspace) {
+                        $alreadyQueued = $workspace->jobWorkerRequests()->where('type', 'enrich')
+                            ->where('parameters->trigger', 'daily')->whereDate('created_at', today())->exists();
+                        if (! $alreadyQueued) {
+                            $workspace->jobWorkerRequests()->create(['requested_by' => null, 'type' => 'enrich', 'status' => 'pending',
+                                'parameters' => ['limit' => 1000, 'trigger' => 'daily']]);
+                        }
+                    });
+                $job = JobWorkerRequest::whereIn('workspace_id', $workspaceIds)->where('status', 'pending')->oldest()->lockForUpdate()->first();
+            }
             if ($job) $job->update(['status' => 'running', 'started_at' => now(), 'error' => null]);
             return $job?->fresh();
         });
