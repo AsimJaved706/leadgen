@@ -33,7 +33,7 @@ class JobWorkerController extends Controller
         if ($active) return response()->json(['message' => 'This worker task is already queued or running.', 'request' => $active], 409);
         $parameters = $data['type'] === 'scrape'
             ? ['search_term' => 'Full Stack Developer', 'location' => 'Remote', 'results_per_source' => 50, 'hours_old' => 24,
-                'sources' => ['linkedin', 'indeed', 'glassdoor', 'google', 'zip_recruiter', 'bayt', 'naukri']]
+                'exclude_asia' => true, 'sources' => ['linkedin', 'indeed', 'glassdoor', 'google', 'zip_recruiter']]
             : ['limit' => 1000];
         $job = $workspace->jobWorkerRequests()->create(['requested_by' => $request->user()->id, 'type' => $data['type'], 'status' => 'pending', 'parameters' => $parameters]);
         Audit::record('jobs.worker_queued', $job->id, ['type' => $job->type], $workspace->id);

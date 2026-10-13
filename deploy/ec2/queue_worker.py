@@ -34,6 +34,7 @@ def main():
             command = [sys.executable, str(ROOT/'worker.py'), '--query', params.get('search_term','Full Stack Developer'),
                 '--location', params.get('location','Remote'), '--results', str(params.get('results_per_source',50)),
                 '--hours-old', str(params.get('hours_old',24)), '--sites', *params.get('sources',['linkedin','indeed']), '--fetch-description', '--push']
+            if params.get('exclude_asia', True): command.append('--exclude-asia')
         else:
             command = [sys.executable, str(ROOT/'email_enricher.py'), '--limit', str(params.get('limit',1000)), '--push']
         try:

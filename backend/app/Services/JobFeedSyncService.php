@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\RecruitmentEmail;
+use App\Support\JobCountryPolicy;
 
 use App\Models\JobSyncRun;
 use App\Models\Workspace;
@@ -36,6 +37,9 @@ class JobFeedSyncService
                             'Remotive' => $this->mapRemotive($raw),
                             'Remote OK' => $this->mapRemoteOk($raw),
                         };
+                        if (JobCountryPolicy::isAsian($data['country'] ?? null, $data['location'] ?? null)) {
+                            continue;
+                        }
                         $hash = hash('sha256', Str::lower($source.'|'.$data['source_job_id']));
                         $existing = $workspace->jobs()->where('dedupe_hash', $hash)->first();
                         if ($existing) {

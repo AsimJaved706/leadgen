@@ -6,6 +6,7 @@ use App\Models\Job;
 use App\Models\Workspace;
 use App\Support\Audit;
 use App\Support\RecruitmentEmail;
+use App\Support\JobCountryPolicy;
 use App\Services\JobFeedSyncService;
 use App\Services\CompanyEmailEnricher;
 use Illuminate\Http\Request;
@@ -107,6 +108,9 @@ class JobController extends Controller
                     $normalized = $this->normalize($raw + ['source_platform' => $data['source_platform']]);
                     if (! $normalized['title']) {
                         throw new \InvalidArgumentException('Job title is required.');
+                    }
+                    if (JobCountryPolicy::isAsian($normalized['country'] ?? null, $normalized['location'] ?? null)) {
+                        throw new \InvalidArgumentException('Jobs located in Asian countries are excluded.');
                     }
                     $hash = $this->hash($normalized);
                     $exists = $workspace->jobs()->where('dedupe_hash', $hash)->exists();

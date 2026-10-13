@@ -49,6 +49,21 @@ class JobsTest extends TestCase
         $this->getJson("/api/workspaces/{$other->id}/jobs")->assertNotFound();
     }
 
+    public function test_import_rejects_jobs_from_asian_countries(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $payload = ['source_platform' => 'LinkedIn', 'jobs' => [
+            ['job_id' => 'pk-1', 'job_title' => 'Developer', 'country' => 'Pakistan', 'location' => 'Lahore, Pakistan'],
+            ['job_id' => 'ca-1', 'job_title' => 'Developer', 'country' => 'Canada', 'location' => 'Toronto, Canada'],
+        ]];
+
+        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/import", $payload)
+            ->assertOk()->assertJson(['created' => 1, 'failed' => 1]);
+        $this->assertDatabaseMissing('workspace_jobs', ['source_job_id' => 'pk-1']);
+        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'ca-1', 'country' => 'Canada']);
+    }
+
     public function test_job_status_permissions_and_paid_access_are_enforced(): void
     {
         $owner = User::factory()->create();
