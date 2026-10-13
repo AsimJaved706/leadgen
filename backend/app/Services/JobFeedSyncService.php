@@ -14,9 +14,10 @@ class JobFeedSyncService
 {
     private const BLOCKED_DOMAINS = ['himalayas.app', 'remotelanders.com', 'linkedin.com', 'indeed.com', 'glassdoor.com'];
 
-    public function sync(Workspace $workspace, int $perSource = 100): JobSyncRun
+    public function sync(Workspace $workspace, int $perSource = 100, array $tags = []): JobSyncRun
     {
-        $run = JobSyncRun::create(['workspace_id' => $workspace->id, 'status' => 'running', 'started_at' => now(), 'sources' => []]);
+        $tags = collect($tags)->map(fn ($tag) => Str::lower(trim((string) $tag)))->filter()->unique()->values()->all();
+        $run = JobSyncRun::create(['workspace_id' => $workspace->id, 'status' => 'running', 'started_at' => now(), 'sources' => ['filters' => ['tags' => $tags]]]);
         $created = $updated = $failed = 0;
         $sources = [];
         try {
@@ -37,6 +38,9 @@ class JobFeedSyncService
                             'Remotive' => $this->mapRemotive($raw),
                             'Remote OK' => $this->mapRemoteOk($raw),
                         };
+                        if (! $this->matchesTags($data, $tags)) {
+                            continue;
+                        }
                         if (JobCountryPolicy::isAsian($data['country'] ?? null, $data['location'] ?? null)) {
                             continue;
                         }
@@ -56,12 +60,21 @@ class JobFeedSyncService
                 }
                 $sources[$source] = ['received' => count($rows), 'created' => $sourceCreated, 'updated' => $sourceUpdated, 'failed' => $sourceFailed];
             }
-            $run->update(['status' => 'completed', 'created_count' => $created, 'updated_count' => $updated, 'failed_count' => $failed, 'sources' => $sources, 'finished_at' => now()]);
+            $run->update(['status' => 'completed', 'created_count' => $created, 'updated_count' => $updated, 'failed_count' => $failed, 'sources' => ['filters' => ['tags' => $tags], 'providers' => $sources], 'finished_at' => now()]);
         } catch (\Throwable $e) {
             $run->update(['status' => 'failed', 'created_count' => $created, 'updated_count' => $updated, 'failed_count' => $failed + 1, 'sources' => $sources, 'error' => Str::limit($e->getMessage(), 2000), 'finished_at' => now()]);
             throw $e;
         }
         return $run->fresh();
+    }
+
+    private function matchesTags(array $job, array $tags): bool
+    {
+        if (! $tags) return true;
+        $haystack = Str::lower(strip_tags(implode(' ', array_filter([
+            $job['title'] ?? null, $job['description'] ?? null, $job['requirements'] ?? null,
+        ]))));
+        return collect($tags)->contains(fn ($tag) => str_contains($haystack, $tag));
     }
 
     private function himalayas(int $limit): array

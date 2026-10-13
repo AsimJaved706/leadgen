@@ -64,10 +64,15 @@ class JobController extends Controller
     public function sync(Request $request, Workspace $workspace, JobFeedSyncService $service)
     {
         $this->authorizeWorkspace($request, $workspace, true);
+        $data = $request->validate([
+            'tags' => 'nullable|array|max:12',
+            'tags.*' => 'required|string|max:80',
+        ]);
         $last = $workspace->jobSyncRuns()->where('status', 'completed')->latest('started_at')->first();
         abort_if($last && $last->started_at->gt(now()->subMinutes(10)), 429, 'Jobs were synced recently. Please wait before running another sync.');
-        $run = $service->sync($workspace);
-        Audit::record('jobs.synced', $run->id, ['created' => $run->created_count, 'updated' => $run->updated_count, 'failed' => $run->failed_count], $workspace->id);
+        $tags = collect($data['tags'] ?? [])->map(fn ($tag) => trim($tag))->filter()->unique(fn ($tag) => Str::lower($tag))->values()->all();
+        $run = $service->sync($workspace, 100, $tags);
+        Audit::record('jobs.synced', $run->id, ['created' => $run->created_count, 'updated' => $run->updated_count, 'failed' => $run->failed_count, 'tags' => $tags], $workspace->id);
         return $run;
     }
 

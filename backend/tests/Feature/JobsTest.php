@@ -120,12 +120,13 @@ class JobsTest extends TestCase
         ]);
         $user = User::factory()->create();
         $workspace = $this->workspace($user);
-        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/sync")
-            ->assertOk()->assertJsonPath('created_count', 2)->assertJsonPath('status', 'completed');
+        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/sync", ['tags' => ['Laravel']])
+            ->assertOk()->assertJsonPath('created_count', 1)->assertJsonPath('status', 'completed')
+            ->assertJsonPath('sources.filters.tags.0', 'laravel');
         $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'h-1', 'contact_email' => 'careers@examplelabs.com', 'email_discovery_status' => 'published_job']);
-        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'r-1', 'company_domain' => 'acme.test', 'email_discovery_status' => 'not_found']);
+        $this->assertDatabaseMissing('workspace_jobs', ['source_job_id' => 'r-1']);
         $this->getJson("/api/workspaces/{$workspace->id}/jobs/filters")
-            ->assertOk()->assertJsonPath('with_email', 1)->assertJsonPath('with_domain', 1)->assertJsonPath('latest_sync.status', 'completed');
+            ->assertOk()->assertJsonPath('with_email', 1)->assertJsonPath('with_domain', 0)->assertJsonPath('latest_sync.status', 'completed');
     }
 
     public function test_scoped_token_can_import_jobs_but_read_only_token_cannot(): void
