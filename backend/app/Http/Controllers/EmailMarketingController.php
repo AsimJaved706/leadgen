@@ -147,11 +147,18 @@ class EmailMarketingController extends Controller
             $group->setAttribute('jobs_count', $group->jobsQuery()->count());
             return $group;
         });
-        $countries = CampaignAudienceGroup::eligibleJobs($workspace)->whereNotNull('country')->where('country', '!=', '')
+        $eligible = CampaignAudienceGroup::eligibleJobs($workspace);
+        $countries = (clone $eligible)->whereNotNull('country')->where('country', '!=', '')
             ->select('country')->selectRaw('COUNT(*) as total')->selectRaw('COUNT(*) as with_email')
             ->groupBy('country')->orderBy('country')->get();
+        $unknown = (clone $eligible)->where(fn ($query) => $query->whereNull('country')->orWhere('country', ''))->count();
+        $tags = collect(['SEO', 'Web', 'Python', 'PHP', 'Laravel', 'React', 'Vue', 'Angular', 'JavaScript', 'WordPress', 'Shopify'])
+            ->map(fn ($tag) => ['tag' => $tag, 'total' => (clone $eligible)->where(function ($query) use ($tag) {
+                $term = '%'.$tag.'%';
+                $query->where('title', 'like', $term)->orWhere('description', 'like', $term)->orWhere('requirements', 'like', $term);
+            })->count()]);
 
-        return ['groups' => $groups, 'countries' => $countries];
+        return ['groups' => $groups, 'countries' => $countries, 'unknown_country_count' => $unknown, 'tags' => $tags];
     }
 
     public function saveAudienceGroup(Request $request, Workspace $workspace)
@@ -160,14 +167,18 @@ class EmailMarketingController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120', Rule::unique('campaign_audience_groups')->where('workspace_id', $workspace->id)],
             'countries' => 'required|array|min:1|max:50', 'countries.*' => 'required|string|max:100|distinct',
+            'tags' => 'nullable|array|max:20', 'tags.*' => 'required|string|max:50|distinct',
             'require_email' => 'required|boolean',
         ]);
         $data['require_email'] = true;
-        $available = $workspace->jobs()->whereIn('country', $data['countries'])->distinct()->pluck('country')->all();
-        abort_if(count($available) !== count($data['countries']), 422, 'One or more selected countries are not available in this workspace.');
+        if (in_array('__all__', $data['countries'], true)) $data['countries'] = ['__all__'];
+        $data['tags'] = array_values(array_unique(array_filter(array_map(fn ($tag) => trim($tag), $data['tags'] ?? []))));
+        $known = array_values(array_filter($data['countries'], fn ($country) => ! in_array($country, ['__all__', '__unknown__'], true)));
+        $available = $workspace->jobs()->whereIn('country', $known)->distinct()->pluck('country')->all();
+        abort_if(count($available) !== count($known), 422, 'One or more selected countries are not available in this workspace.');
         $group = $workspace->campaignAudienceGroups()->create($data);
         $group->setAttribute('jobs_count', $group->jobsQuery()->count());
-        Audit::record('email.audience_group_created', $group->id, ['countries' => $group->countries], $workspace->id);
+        Audit::record('email.audience_group_created', $group->id, ['countries' => $group->countries, 'tags' => $group->tags], $workspace->id);
 
         return response()->json($group, 201);
     }

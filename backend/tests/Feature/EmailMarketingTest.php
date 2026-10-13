@@ -190,6 +190,25 @@ class EmailMarketingTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['workspace_id' => $workspace->id, 'action' => 'email.campaign_stopped', 'resource_id' => $campaign->id]);
     }
 
+    public function test_job_group_supports_all_unknown_countries_and_skill_tags(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+        $workspace->jobs()->create(['source_platform' => 'LinkedIn', 'title' => 'Python Engineer', 'country' => null,
+            'contact_email' => 'python@example.test', 'email_discovery_status' => 'published_job', 'dedupe_hash' => hash('sha256', 'python-unknown')]);
+        $workspace->jobs()->create(['source_platform' => 'Indeed', 'title' => 'SEO Specialist', 'country' => 'Canada',
+            'contact_email' => 'seo@example.test', 'email_discovery_status' => 'published_job', 'dedupe_hash' => hash('sha256', 'seo-ca')]);
+
+        $this->actingAs($owner)->getJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups')
+            ->assertOk()->assertJsonPath('unknown_country_count', 1);
+        $this->postJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups', [
+            'name' => 'Unknown Python jobs', 'countries' => ['__unknown__'], 'tags' => ['Python'], 'require_email' => true,
+        ])->assertCreated()->assertJsonPath('jobs_count', 1)->assertJsonPath('tags.0', 'Python');
+        $this->postJson('/api/workspaces/'.$workspace->id.'/campaign-audience-groups', [
+            'name' => 'All SEO jobs', 'countries' => ['__all__', 'Canada'], 'tags' => ['SEO'], 'require_email' => true,
+        ])->assertCreated()->assertJsonPath('countries.0', '__all__')->assertJsonPath('jobs_count', 1);
+    }
+
     public function test_campaign_accepts_a_private_document_attachment(): void
     {
         Storage::fake('local');
