@@ -166,6 +166,24 @@ class JobsTest extends TestCase
             ->assertOk()->assertJsonPath('requests.0.status', 'completed');
     }
 
+    public function test_stale_worker_request_is_released_when_dashboard_checks_status(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $stale = $workspace->jobWorkerRequests()->create([
+            'requested_by' => $user->id,
+            'type' => 'scrape',
+            'status' => 'running',
+            'parameters' => ['sources' => ['linkedin']],
+            'created_at' => now()->subHours(2),
+            'started_at' => now()->subHours(2),
+        ]);
+
+        $this->actingAs($user)->getJson("/api/workspaces/{$workspace->id}/jobs/worker-status")
+            ->assertOk()->assertJsonPath('requests.0.status', 'failed');
+        $this->assertNotNull($stale->fresh()->finished_at);
+    }
+
     public function test_worker_queues_email_discovery_only_once_each_day(): void
     {
         $user = User::factory()->create();

@@ -22,6 +22,21 @@ class JobWorkerController extends Controller
     public function status(Request $request, Workspace $workspace): array
     {
         $this->member($request, $workspace);
+
+        $workspace->jobWorkerRequests()
+            ->where(function ($query) {
+                $query->where(function ($pending) {
+                    $pending->where('status', 'pending')->where('created_at', '<', now()->subHour());
+                })->orWhere(function ($running) {
+                    $running->where('status', 'running')->where('started_at', '<', now()->subHour());
+                });
+            })
+            ->update([
+                'status' => 'failed',
+                'error' => 'The worker did not complete this request. It was released automatically.',
+                'finished_at' => now(),
+            ]);
+
         return ['requests' => $workspace->jobWorkerRequests()->latest()->limit(5)->get()];
     }
 
