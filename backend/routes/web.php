@@ -47,7 +47,7 @@ Route::prefix('api')->group(function () {
         Route::post('/workspaces/{workspace}/jobs/sync', [JobController::class, 'sync'])->middleware('throttle:3,10');
         Route::post('/workspaces/{workspace}/jobs/enrich', [JobController::class, 'enrich'])->middleware('throttle:2,10');
         Route::get('/workspaces/{workspace}/jobs/worker-status', [JobWorkerController::class, 'status']);
-        Route::post('/workspaces/{workspace}/jobs/worker-requests', [JobWorkerController::class, 'store'])->middleware('throttle:5,1');
+        Route::post('/workspaces/{workspace}/jobs/worker-requests', [JobWorkerController::class, 'store'])->middleware('throttle:30,1');
         Route::post('/worker/job-requests/claim', [JobWorkerController::class, 'claim'])->middleware('throttle:120,1');
         Route::post('/worker/job-requests/{workerRequest}/complete', [JobWorkerController::class, 'complete'])->middleware('throttle:120,1');
         Route::post('/workspaces/{workspace}/jobs', [JobController::class, 'store']);
