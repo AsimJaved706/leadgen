@@ -132,4 +132,35 @@ class ExtensionController extends Controller
         Audit::record('extension.linkedin_job_saved', $job->id, ['created' => ! $existing], $workspace->id);
         return response()->json(['created' => ! $existing, 'job' => $job], $existing ? 200 : 201);
     }
+
+    public function application(Request $request, Workspace $workspace, int $job)
+    {
+        abort_unless($request->user()->tokenCan('extension:read'), 403);
+        abort_unless($workspace->members()->where('users.id', $request->user()->id)->exists(), 404);
+        $access = ExtensionAccess::status($workspace);
+        abort_unless($access['allowed'], 402, $access['reason']);
+        $record = $workspace->jobs()->findOrFail($job);
+        abort_unless(filled($record->source_url), 422, 'This job has no application link.');
+
+        return [
+            'job' => $record->only(['id', 'title', 'company_name', 'source_url', 'status']),
+            'applicant' => $request->user()->only(['name', 'email']),
+        ];
+    }
+
+    public function applicationStatus(Request $request, Workspace $workspace, int $job)
+    {
+        abort_unless($request->user()->tokenCan('extension:write'), 403);
+        $member = $workspace->members()->where('users.id', $request->user()->id)->first();
+        abort_unless($member, 404);
+        abort_if($member->pivot->role === 'viewer', 403, 'Viewers cannot update applications.');
+        $access = ExtensionAccess::status($workspace);
+        abort_unless($access['allowed'], 402, $access['reason']);
+        $record = $workspace->jobs()->findOrFail($job);
+        $data = $request->validate(['status' => 'required|in:saved,applied']);
+        $record->update(['status' => $data['status']]);
+        Audit::record('extension.job_application_updated', $record->id, $data, $workspace->id);
+
+        return ['job' => $record->fresh()];
+    }
 }

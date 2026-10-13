@@ -42,7 +42,7 @@ class PlatformTest extends TestCase
         $u = User::first();
         $this->assertTrue(Hash::check('StrongPassword123!', $u->password));
         $this->assertSame('owner', $u->workspaces()->first()->pivot->role);
-        $this->assertSame(12, $u->workspaces()->first()->emailTemplates()->count());
+        $this->assertSame(17, $u->workspaces()->first()->emailTemplates()->count());
         $this->assertDatabaseHas('email_templates', ['workspace_id' => $u->workspaces()->first()->id, 'name' => 'Professional Introduction']);
         $this->assertDatabaseHas('email_templates', ['workspace_id' => $u->workspaces()->first()->id, 'name' => 'Simple Introduction']);
         $this->getJson('/api/me')->assertOk();
@@ -337,5 +337,28 @@ class PlatformTest extends TestCase
         $this->actingAs($user)->postJson('/api/workspaces/'.$workspace->id.'/lists/'.$list->id.'/leads', ['lead_ids' => [$lead->id]])
             ->assertOk()->assertJson(['added' => 1, 'total' => 1]);
         $this->assertDatabaseHas('lead_list_items', ['lead_list_id' => $list->id, 'lead_id' => $lead->id]);
+    }
+
+    public function test_extension_application_assistant_is_scoped_and_requires_confirmation_to_mark_applied(): void
+    {
+        $user = User::factory()->create(['name' => 'Fahad Tanwir', 'email' => 'fahad@example.test']);
+        $workspace = $this->workspace($user);
+        $other = $this->workspace(User::factory()->create());
+        $job = $workspace->jobs()->create([
+            'source_platform' => 'Indeed', 'title' => 'Full Stack Developer',
+            'company_name' => 'Acme', 'source_url' => 'https://jobs.example.test/apply/123',
+            'dedupe_hash' => hash('sha256', 'application-assistant'), 'status' => 'new',
+        ]);
+        $token = $user->createToken('extension', ['extension:read', 'extension:write'], now()->addMinutes(15))->plainTextToken;
+        $path = "/api/extension/workspaces/{$workspace->id}/jobs/{$job->id}/application";
+
+        $this->withToken($token)->getJson($path)->assertOk()
+            ->assertJsonPath('applicant.email', 'fahad@example.test')
+            ->assertJsonPath('job.source_url', 'https://jobs.example.test/apply/123');
+        $this->assertDatabaseHas('workspace_jobs', ['id' => $job->id, 'status' => 'new']);
+        $this->withToken($token)->postJson($path, ['status' => 'saved'])->assertOk()->assertJsonPath('job.status', 'saved');
+        $this->withToken($token)->postJson($path, ['status' => 'applied'])->assertOk()->assertJsonPath('job.status', 'applied');
+        $this->withToken($token)->getJson("/api/extension/workspaces/{$other->id}/jobs/{$job->id}/application")->assertNotFound();
+        $this->assertDatabaseHas('audit_logs', ['action' => 'extension.job_application_updated', 'resource_id' => $job->id]);
     }
 }

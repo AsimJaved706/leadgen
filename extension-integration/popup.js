@@ -35,6 +35,13 @@ async function load() {
   try { await render(await send('leadspaceContext')); }
   catch (error) { $('signedin').classList.add('hidden'); $('signedout').classList.remove('hidden'); $('connection').textContent = 'Not connected'; if (!/Connect the extension/.test(error.message)) message(error.message); }
 }
+chrome.storage.local.get(['applicationPhone','applicationLinkedIn','applicationPortfolio','applicationLocation']).then(values => {
+  for (const key of Object.keys(values)) if ($(key)) $(key).value = values[key] || '';
+});
+$('saveApplicationProfile').addEventListener('click', async () => {
+  await chrome.storage.local.set({applicationPhone:$('applicationPhone').value.trim(),applicationLinkedIn:$('applicationLinkedIn').value.trim(),applicationPortfolio:$('applicationPortfolio').value.trim(),applicationLocation:$('applicationLocation').value.trim()});
+  message('Application profile saved on this browser.', 'success');
+});
 $('connect').addEventListener('click', async () => { clearMessage(); $('connect').disabled = true; try { await render(await send('leadspaceConnect')); message('Extension connected securely.', 'success'); } catch (error) { message(error.message); } finally { $('connect').disabled = false; } });
 $('refresh').addEventListener('click', load);
 $('disconnect').addEventListener('click', async () => { await send('leadspaceDisconnect'); load(); });

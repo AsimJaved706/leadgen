@@ -80,6 +80,22 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (!result?.ok || !result.job?.title) throw new Error(result?.error || 'Could not read this LinkedIn job. Open the full job details first.');
       return leadspaceApi(`/extension/workspaces/${workspace.id}/jobs/linkedin`, {method: 'POST', body: JSON.stringify(result.job)});
     }
+    if (message.action === 'leadspaceApplication') {
+      const workspaceId = Number(message.data?.workspaceId);
+      const jobId = Number(message.data?.jobId);
+      const {workspace} = await selectedWorkspace(false);
+      if (workspace.id !== workspaceId || !jobId) throw new Error('Select the same workspace in Leadspace before applying.');
+      const payload = await leadspaceApi(`/extension/workspaces/${workspaceId}/jobs/${jobId}/application`);
+      const profile = await chrome.storage.local.get(['applicationPhone', 'applicationLinkedIn', 'applicationPortfolio', 'applicationLocation']);
+      return {...payload, applicant: {...payload.applicant, phone: profile.applicationPhone || '', linkedin: profile.applicationLinkedIn || '', portfolio: profile.applicationPortfolio || '', location: profile.applicationLocation || ''}};
+    }
+    if (message.action === 'leadspaceApplicationStatus') {
+      const workspaceId = Number(message.data?.workspaceId);
+      const jobId = Number(message.data?.jobId);
+      const {workspace} = await selectedWorkspace(false);
+      if (workspace.id !== workspaceId || !jobId) throw new Error('Select the same workspace in Leadspace before updating this application.');
+      return leadspaceApi(`/extension/workspaces/${workspaceId}/jobs/${jobId}/application`, {method: 'POST', body: JSON.stringify({status: message.data?.status})});
+    }
     throw new Error('Unknown Leadspace extension action.');
   };
   run().then(data => respond({ok: true, data})).catch(error => respond({ok: false, error: error.message}));

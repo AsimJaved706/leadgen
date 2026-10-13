@@ -6,14 +6,18 @@ Copy-Item (Join-Path $PSScriptRoot 'leadspace-bg.js') (Join-Path $extensionRoot 
 Copy-Item (Join-Path $PSScriptRoot 'popup.html') (Join-Path $extensionRoot 'popup.html') -Force
 Copy-Item (Join-Path $PSScriptRoot 'popup.js') (Join-Path $extensionRoot 'js\popup.js') -Force
 Copy-Item (Join-Path $PSScriptRoot 'linkedin-job.js') (Join-Path $extensionRoot 'js\linkedin-job.js') -Force
+Copy-Item (Join-Path $PSScriptRoot 'application-assistant.js') (Join-Path $extensionRoot 'js\application-assistant.js') -Force
 
 $manifestPath = Join-Path $extensionRoot 'manifest.json'
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $manifest.permissions = @($manifest.permissions + 'identity' | Select-Object -Unique)
 $manifest.host_permissions = @($manifest.host_permissions + 'https://www.linkedin.com/*' | Select-Object -Unique)
+$manifest.host_permissions = @($manifest.host_permissions + 'https://*/*' + 'http://*/*' | Select-Object -Unique)
 $linkedinScript = [pscustomobject]@{ matches = @('https://www.linkedin.com/jobs/*'); js = @('js/linkedin-job.js'); run_at = 'document_idle' }
 if (-not ($manifest.content_scripts | Where-Object { $_.js -contains 'js/linkedin-job.js' })) { $manifest.content_scripts = @($manifest.content_scripts) + $linkedinScript }
-$manifest.version = '3.0.0'
+$applicationScript = [pscustomobject]@{ matches = @('http://*/*','https://*/*'); js = @('js/application-assistant.js'); run_at = 'document_idle' }
+if (-not ($manifest.content_scripts | Where-Object { $_.js -contains 'js/application-assistant.js' })) { $manifest.content_scripts = @($manifest.content_scripts) + $applicationScript }
+$manifest.version = '3.1.0'
 $manifest.name = 'Leadspace Maps Extractor'
 $manifest.description = 'Save Google Maps leads and opened LinkedIn jobs to an authorized Leadspace workspace.'
 $manifestJson = $manifest | ConvertTo-Json -Depth 20
