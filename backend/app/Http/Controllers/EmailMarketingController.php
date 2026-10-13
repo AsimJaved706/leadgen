@@ -15,6 +15,7 @@ use App\Services\WorkspaceReplySync;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class EmailMarketingController extends Controller
@@ -111,9 +112,27 @@ class EmailMarketingController extends Controller
             'html_body' => 'required|string|max:200000',
             'text_body' => 'nullable|string|max:100000',
             'is_active' => 'sometimes|boolean',
+            'attachment' => 'nullable|file|max:5120|mimes:pdf,doc,docx,txt,rtf',
+            'remove_attachment' => 'sometimes|boolean',
         ]);
         $data['html_body'] = WorkspaceMailer::sanitizeHtml($data['html_body']);
-        $template = $template ? tap($template)->update($data) : $workspace->emailTemplates()->create($data);
+        unset($data['attachment'], $data['remove_attachment']);
+        $oldPath = $template?->attachment_path;
+        $attachment = $request->file('attachment');
+        $newPath = $attachment?->store('template-attachments/'.$workspace->id, 'local');
+        if ($attachment) {
+            $data += ['attachment_path' => $newPath, 'attachment_name' => basename($attachment->getClientOriginalName()),
+                'attachment_mime' => $attachment->getMimeType(), 'attachment_size' => $attachment->getSize()];
+        } elseif ($request->boolean('remove_attachment')) {
+            $data += ['attachment_path' => null, 'attachment_name' => null, 'attachment_mime' => null, 'attachment_size' => null];
+        }
+        try {
+            $template = $template ? tap($template)->update($data) : $workspace->emailTemplates()->create($data);
+        } catch (\Throwable $exception) {
+            if ($newPath) Storage::disk('local')->delete($newPath);
+            throw $exception;
+        }
+        if ($oldPath && ($newPath || $request->boolean('remove_attachment'))) Storage::disk('local')->delete($oldPath);
         Audit::record('email.template_saved', $template->id, ['name' => $template->name], $workspace->id);
 
         return response()->json($template, $template->wasRecentlyCreated ? 201 : 200);
@@ -254,7 +273,19 @@ class EmailMarketingController extends Controller
         };
         $scheduledAt = $data['send_mode'] === 'now' ? now() : ($data['scheduled_at'] ?? null);
         $attachment = $request->file('attachment');
+        $template = $workspace->emailTemplates()->findOrFail($data['email_template_id']);
         $attachmentPath = $attachment?->store('email-attachments/'.$workspace->id, 'local');
+        $attachmentName = $attachment ? basename($attachment->getClientOriginalName()) : null;
+        $attachmentMime = $attachment?->getMimeType();
+        $attachmentSize = $attachment?->getSize();
+        if (! $attachmentPath && $template->attachment_path) {
+            abort_unless(Storage::disk('local')->exists($template->attachment_path), 422, 'The resume attached to this template is missing. Upload it again.');
+            $attachmentPath = 'email-attachments/'.$workspace->id.'/'.Str::uuid().'-'.basename($template->attachment_path);
+            Storage::disk('local')->copy($template->attachment_path, $attachmentPath);
+            $attachmentName = $template->attachment_name;
+            $attachmentMime = $template->attachment_mime;
+            $attachmentSize = $template->attachment_size;
+        }
         try {
             $campaign = $workspace->emailCampaigns()->create([
                 'name' => $data['name'], 'email_template_id' => $data['email_template_id'],
@@ -262,9 +293,9 @@ class EmailMarketingController extends Controller
                 'campaign_audience_group_id' => $data['campaign_audience_group_id'] ?? null,
                 'created_by' => $request->user()->id, 'status' => $status, 'scheduled_at' => $scheduledAt,
                 'attachment_path' => $attachmentPath,
-                'attachment_name' => $attachment ? basename($attachment->getClientOriginalName()) : null,
-                'attachment_mime' => $attachment?->getMimeType(),
-                'attachment_size' => $attachment?->getSize(),
+                'attachment_name' => $attachmentName,
+                'attachment_mime' => $attachmentMime,
+                'attachment_size' => $attachmentSize,
             ]);
         } catch (\Throwable $exception) {
             if ($attachmentPath) {

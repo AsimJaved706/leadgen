@@ -230,6 +230,31 @@ class EmailMarketingTest extends TestCase
         $this->assertSame('resume.pdf', $campaign->attachment_name);
     }
 
+    public function test_template_resume_is_private_and_copied_to_new_campaigns(): void
+    {
+        Storage::fake('local');
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+
+        $response = $this->actingAs($owner)->post('/api/workspaces/'.$workspace->id.'/email-templates', [
+            'name' => 'Developer application', 'subject' => 'Application',
+            'html_body' => '<p>Please review my resume.</p>', 'is_active' => true,
+            'attachment' => UploadedFile::fake()->create('Fahad-Resume.pdf', 180, 'application/pdf'),
+        ], ['Accept' => 'application/json']);
+        $response->assertCreated()->assertJsonPath('attachment_name', 'Fahad-Resume.pdf')->assertJsonMissingPath('attachment_path');
+        $template = $workspace->emailTemplates()->firstWhere('name', 'Developer application');
+        Storage::disk('local')->assertExists($template->attachment_path);
+
+        $this->post('/api/workspaces/'.$workspace->id.'/email-campaigns', [
+            'name' => 'Applications', 'email_template_id' => $template->id,
+            'audience_type' => 'all', 'send_mode' => 'draft',
+        ], ['Accept' => 'application/json'])->assertCreated()->assertJsonPath('attachment_name', 'Fahad-Resume.pdf');
+
+        $campaign = EmailCampaign::firstOrFail();
+        $this->assertNotSame($template->attachment_path, $campaign->attachment_path);
+        Storage::disk('local')->assertExists($campaign->attachment_path);
+    }
+
     public function test_signed_unsubscribe_suppresses_future_campaigns(): void
     {
         $owner = User::factory()->create();
