@@ -28,12 +28,20 @@ class JobWorkerController extends Controller
     public function store(Request $request, Workspace $workspace)
     {
         $this->member($request, $workspace, true);
-        $data = $request->validate(['type' => 'required|in:scrape,enrich']);
+        $data = $request->validate([
+            'type' => 'required|in:scrape,enrich',
+            'sources' => 'required_if:type,scrape|array|min:1|max:5',
+            'sources.*' => 'string|in:linkedin,indeed,glassdoor,google,zip_recruiter',
+            'search_term' => 'nullable|string|max:120',
+            'location' => 'nullable|string|max:120',
+            'results_per_source' => 'nullable|integer|min:1|max:100',
+        ]);
         $active = $workspace->jobWorkerRequests()->where('type', $data['type'])->whereIn('status', ['pending', 'running'])->first();
         if ($active) return response()->json(['message' => 'This worker task is already queued or running.', 'request' => $active], 409);
         $parameters = $data['type'] === 'scrape'
-            ? ['search_term' => 'Full Stack Developer', 'location' => 'Remote', 'results_per_source' => 50, 'hours_old' => 24,
-                'exclude_asia' => true, 'sources' => ['linkedin', 'indeed', 'glassdoor', 'google', 'zip_recruiter']]
+            ? ['search_term' => $data['search_term'] ?? 'Full Stack Developer', 'location' => $data['location'] ?? 'Remote',
+                'results_per_source' => $data['results_per_source'] ?? 50, 'hours_old' => 24,
+                'exclude_asia' => true, 'sources' => array_values(array_unique($data['sources']))]
             : ['limit' => 1000];
         $job = $workspace->jobWorkerRequests()->create(['requested_by' => $request->user()->id, 'type' => $data['type'], 'status' => 'pending', 'parameters' => $parameters]);
         Audit::record('jobs.worker_queued', $job->id, ['type' => $job->type], $workspace->id);

@@ -148,9 +148,13 @@ class JobsTest extends TestCase
     {
         $user = User::factory()->create();
         $workspace = $this->workspace($user);
-        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", ['type' => 'scrape'])
-            ->assertStatus(202)->assertJsonPath('status', 'pending');
-        $this->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", ['type' => 'scrape'])->assertConflict();
+        $payload = ['type' => 'scrape', 'sources' => ['linkedin', 'indeed'], 'search_term' => 'Laravel Developer',
+            'location' => 'United States', 'results_per_source' => 25];
+        $this->actingAs($user)->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", $payload)
+            ->assertStatus(202)->assertJsonPath('status', 'pending')
+            ->assertJsonPath('parameters.sources.0', 'linkedin')->assertJsonPath('parameters.sources.1', 'indeed')
+            ->assertJsonPath('parameters.search_term', 'Laravel Developer')->assertJsonPath('parameters.results_per_source', 25);
+        $this->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", $payload)->assertConflict();
 
         $token = $user->createToken('ec2', ['jobs:write'], now()->addDay())->plainTextToken;
         $claim = $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertOk()
