@@ -57,7 +57,7 @@ Artisan::command('jobs:sync {--workspace=}', function (JobFeedSyncService $servi
     if ($id = $this->option('workspace')) $query->whereKey($id);
     $query->each(function (Workspace $workspace) use ($service) {
         $this->info("Syncing jobs for workspace {$workspace->id}: {$workspace->name}");
-        $run = $service->sync($workspace);
+        $run = $service->sync($workspace, 50);
         $this->line("Created {$run->created_count}, updated {$run->updated_count}, failed {$run->failed_count}");
     });
 })->purpose('Fetch and enrich jobs from configured free feeds');
