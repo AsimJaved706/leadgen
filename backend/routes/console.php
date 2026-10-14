@@ -62,7 +62,10 @@ Artisan::command('jobs:sync {--workspace=}', function (JobFeedSyncService $servi
     });
 })->purpose('Fetch and enrich jobs from configured free feeds');
 
-Schedule::command('jobs:sync')->dailyAt('02:15')->withoutOverlapping()->onOneServer();
+Schedule::call(function (JobFeedSyncService $service) {
+    Workspace::query()->whereNull('suspended_at')->whereHas('plan', fn ($q) => $q->where('slug', '!=', 'free'))
+        ->each(fn (Workspace $workspace) => $service->sync($workspace, 50));
+})->name('sync-free-job-feeds')->dailyAt('02:15')->withoutOverlapping()->onOneServer();
 
 Artisan::command('jobs:enrich {--workspace=} {--limit=25}', function (CompanyEmailEnricher $service) {
     $query = Workspace::query()->whereNull('suspended_at')->whereHas('plan', fn ($q) => $q->where('slug', '!=', 'free'));
