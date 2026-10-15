@@ -6,11 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class Workspace extends Model
 {
-    protected $fillable = ['name', 'owner_id', 'plan_id'];
+    protected $fillable = ['name', 'owner_id', 'plan_id', 'include_asian_job_countries'];
 
     protected function casts(): array
     {
-        return ['suspended_at' => 'datetime'];
+        return ['suspended_at' => 'datetime', 'include_asian_job_countries' => 'boolean'];
     }
 
     public function members()

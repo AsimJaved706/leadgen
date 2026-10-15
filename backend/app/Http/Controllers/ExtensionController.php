@@ -7,6 +7,7 @@ use App\Models\Workspace;
 use App\Support\Audit;
 use App\Support\ExtensionAccess;
 use App\Support\GoogleMapsLeadNormalizer;
+use App\Support\JobCountryPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -120,6 +121,7 @@ class ExtensionController extends Controller
             'contact_email' => 'nullable|email|max:255', 'posted_at' => 'nullable|date',
             'expires_at' => 'nullable|date', 'metadata' => 'nullable|array',
         ]);
+        abort_if(! $workspace->include_asian_job_countries && JobCountryPolicy::isAsian($data['country'] ?? null, $data['location'] ?? null), 422, 'Asian-country jobs are disabled in this workspace.');
         $data['source_platform'] = 'LinkedIn';
         $data['workplace_type'] = $data['workplace_type'] ?? 'unknown';
         $data['scraped_at'] = now();

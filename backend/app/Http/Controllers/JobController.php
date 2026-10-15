@@ -61,6 +61,23 @@ class JobController extends Controller
         ];
     }
 
+    public function settings(Request $request, Workspace $workspace): array
+    {
+        $this->authorizeWorkspace($request, $workspace);
+
+        return ['include_asian_job_countries' => (bool) $workspace->include_asian_job_countries];
+    }
+
+    public function updateSettings(Request $request, Workspace $workspace): array
+    {
+        $this->authorizeWorkspace($request, $workspace, true);
+        $data = $request->validate(['include_asian_job_countries' => 'required|boolean']);
+        $workspace->update($data);
+        Audit::record('jobs.country_filter_updated', null, $data, $workspace->id);
+
+        return ['include_asian_job_countries' => (bool) $workspace->fresh()->include_asian_job_countries];
+    }
+
     public function sync(Request $request, Workspace $workspace, JobFeedSyncService $service)
     {
         $this->authorizeWorkspace($request, $workspace, true);
@@ -114,8 +131,8 @@ class JobController extends Controller
                     if (! $normalized['title']) {
                         throw new \InvalidArgumentException('Job title is required.');
                     }
-                    if (JobCountryPolicy::isAsian($normalized['country'] ?? null, $normalized['location'] ?? null)) {
-                        throw new \InvalidArgumentException('Jobs located in Asian countries are excluded.');
+                    if (! $workspace->include_asian_job_countries && JobCountryPolicy::isAsian($normalized['country'] ?? null, $normalized['location'] ?? null)) {
+                        throw new \InvalidArgumentException('Jobs located in Asian countries are disabled in this workspace.');
                     }
                     $hash = $this->hash($normalized);
                     $exists = $workspace->jobs()->where('dedupe_hash', $hash)->exists();

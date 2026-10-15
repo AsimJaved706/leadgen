@@ -41,7 +41,7 @@ class JobFeedSyncService
                         if (! $this->matchesTags($data, $tags)) {
                             continue;
                         }
-                        if (JobCountryPolicy::isAsian($data['country'] ?? null, $data['location'] ?? null)) {
+                        if (! $workspace->include_asian_job_countries && JobCountryPolicy::isAsian($data['country'] ?? null, $data['location'] ?? null)) {
                             continue;
                         }
                         $hash = hash('sha256', Str::lower($source.'|'.$data['source_job_id']));

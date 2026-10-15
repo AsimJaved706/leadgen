@@ -56,7 +56,7 @@ class JobWorkerController extends Controller
         $parameters = $data['type'] === 'scrape'
             ? ['search_term' => $data['search_term'] ?? 'Full Stack Developer', 'location' => $data['location'] ?? 'Remote',
                 'results_per_source' => $data['results_per_source'] ?? 50, 'hours_old' => 24,
-                'exclude_asia' => true, 'sources' => array_values(array_unique($data['sources']))]
+                'exclude_asia' => ! $workspace->include_asian_job_countries, 'sources' => array_values(array_unique($data['sources']))]
             : ['limit' => 1000];
         $job = $workspace->jobWorkerRequests()->create(['requested_by' => $request->user()->id, 'type' => $data['type'], 'status' => 'pending', 'parameters' => $parameters]);
         Audit::record('jobs.worker_queued', $job->id, ['type' => $job->type], $workspace->id);

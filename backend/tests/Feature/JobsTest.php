@@ -64,6 +64,25 @@ class JobsTest extends TestCase
         $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'ca-1', 'country' => 'Canada']);
     }
 
+    public function test_workspace_can_enable_asian_country_jobs_for_imports_and_worker_syncs(): void
+    {
+        $user = User::factory()->create();
+        $workspace = $this->workspace($user);
+        $this->actingAs($user);
+
+        $this->getJson("/api/workspaces/{$workspace->id}/jobs/settings")
+            ->assertOk()->assertJsonPath('include_asian_job_countries', false);
+        $this->patchJson("/api/workspaces/{$workspace->id}/jobs/settings", ['include_asian_job_countries' => true])
+            ->assertOk()->assertJsonPath('include_asian_job_countries', true);
+        $this->postJson("/api/workspaces/{$workspace->id}/jobs/import", ['source_platform' => 'LinkedIn', 'jobs' => [[
+            'job_id' => 'in-1', 'job_title' => 'Remote Developer', 'country' => 'India', 'location' => 'Remote, India',
+        ]]])->assertOk()->assertJson(['created' => 1, 'failed' => 0]);
+        $this->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", [
+            'type' => 'scrape', 'sources' => ['linkedin'], 'search_term' => 'Developer', 'location' => 'Remote',
+        ])->assertStatus(202)->assertJsonPath('parameters.exclude_asia', false);
+        $this->assertDatabaseHas('workspace_jobs', ['source_job_id' => 'in-1', 'country' => 'India']);
+    }
+
     public function test_job_status_permissions_and_paid_access_are_enforced(): void
     {
         $owner = User::factory()->create();

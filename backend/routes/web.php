@@ -46,6 +46,8 @@ Route::prefix('api')->group(function () {
         Route::post('/workspaces/{workspace}/lists/{list}/leads', [WorkspaceController::class, 'addLeadsToList']);
         Route::get('/workspaces/{workspace}/jobs', [JobController::class, 'index']);
         Route::get('/workspaces/{workspace}/jobs/filters', [JobController::class, 'filters']);
+        Route::get('/workspaces/{workspace}/jobs/settings', [JobController::class, 'settings']);
+        Route::patch('/workspaces/{workspace}/jobs/settings', [JobController::class, 'updateSettings']);
         Route::post('/workspaces/{workspace}/jobs/sync', [JobController::class, 'sync'])->middleware('throttle:3,10');
         Route::post('/workspaces/{workspace}/jobs/enrich', [JobController::class, 'enrich'])->middleware('throttle:2,10');
         Route::get('/workspaces/{workspace}/jobs/worker-status', [JobWorkerController::class, 'status']);
