@@ -19,8 +19,10 @@ LOCK_FILE="$DOMAIN_ROOT/.repair-public.lock"
     fi
 
     cp -a "$BUILD_ROOT/assets/." "$PUBLIC_ROOT/assets/"
-    cp "$BACKEND_PUBLIC/index.php" "$PUBLIC_ROOT/index.php"
-    cp "$BACKEND_PUBLIC/.htaccess" "$PUBLIC_ROOT/.htaccess"
+    # This wrapper resolves the Laravel backend from the domain public root.
+    # The backend's own index.php uses relative paths and cannot live here.
+    cp "$APP_ROOT/public/index.php" "$PUBLIC_ROOT/index.php"
+    cp "$APP_ROOT/public/.htaccess" "$PUBLIC_ROOT/.htaccess"
     [ -f "$BACKEND_PUBLIC/favicon.ico" ] && cp "$BACKEND_PUBLIC/favicon.ico" "$PUBLIC_ROOT/favicon.ico"
     [ -f "$BACKEND_PUBLIC/robots.txt" ] && cp "$BACKEND_PUBLIC/robots.txt" "$PUBLIC_ROOT/robots.txt"
 
