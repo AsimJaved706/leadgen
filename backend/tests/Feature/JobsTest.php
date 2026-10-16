@@ -176,7 +176,7 @@ class JobsTest extends TestCase
             ->assertJsonPath('parameters.search_term', 'Laravel Developer')->assertJsonPath('parameters.results_per_source', 25);
         $this->postJson("/api/workspaces/{$workspace->id}/jobs/worker-requests", $payload)->assertConflict();
 
-        $token = $user->createToken('ec2', ['jobs:write'], now()->addDay())->plainTextToken;
+        $token = $user->createToken('ec2', ['jobs:worker'], now()->addDay())->plainTextToken;
         $claim = $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertOk()
             ->assertJsonPath('status', 'running')->json();
         $this->withToken($token)->postJson("/api/worker/job-requests/{$claim['id']}/complete", [
@@ -184,6 +184,23 @@ class JobsTest extends TestCase
         ])->assertOk()->assertJsonPath('result.fetched', 50);
         $this->actingAs($user)->getJson("/api/workspaces/{$workspace->id}/jobs/worker-status")
             ->assertOk()->assertJsonPath('requests.0.status', 'completed');
+    }
+
+    public function test_worker_service_token_can_claim_and_import_for_another_paid_workspace(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspace($owner);
+        $serviceAccount = User::factory()->create();
+        $workspace->jobWorkerRequests()->create([
+            'requested_by' => $owner->id, 'type' => 'scrape', 'status' => 'pending', 'parameters' => ['sources' => ['linkedin']],
+        ]);
+        $token = $serviceAccount->createToken('ec2', ['jobs:worker', 'jobs:write'], now()->addDay())->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertOk()
+            ->assertJsonPath('workspace_id', $workspace->id)->assertJsonPath('status', 'running');
+        $this->withToken($token)->postJson("/api/workspaces/{$workspace->id}/jobs/import", ['source_platform' => 'LinkedIn', 'jobs' => [[
+            'source_job_id' => 'worker-1', 'title' => 'Remote Developer', 'country' => 'Canada',
+        ]]])->assertOk()->assertJsonPath('created', 1);
     }
 
     public function test_stale_worker_request_is_released_when_dashboard_checks_status(): void
@@ -208,7 +225,7 @@ class JobsTest extends TestCase
     {
         $user = User::factory()->create();
         $workspace = $this->workspace($user);
-        $token = $user->createToken('ec2-daily', ['jobs:write'], now()->addDay())->plainTextToken;
+        $token = $user->createToken('ec2-daily', ['jobs:worker'], now()->addDay())->plainTextToken;
 
         $claim = $this->withToken($token)->postJson('/api/worker/job-requests/claim')->assertOk()
             ->assertJsonPath('type', 'enrich')->assertJsonPath('status', 'running')

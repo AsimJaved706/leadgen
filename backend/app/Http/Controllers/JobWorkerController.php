@@ -65,9 +65,11 @@ class JobWorkerController extends Controller
 
     public function claim(Request $request)
     {
-        abort_unless($request->bearerToken() && $request->user()->tokenCan('jobs:write'), 403, 'A jobs:write worker token is required.');
+        abort_unless($request->bearerToken() && $request->user()->tokenCan('jobs:worker'), 403, 'A jobs:worker service token is required.');
         $job = DB::transaction(function () use ($request) {
-            $workspaceIds = $request->user()->workspaces()->pluck('workspaces.id');
+            $workspaceIds = Workspace::query()->whereNull('suspended_at')
+                ->whereHas('plan', fn ($query) => $query->where('slug', '!=', 'free'))
+                ->pluck('id');
             $job = JobWorkerRequest::whereIn('workspace_id', $workspaceIds)->where('status', 'pending')->oldest()->lockForUpdate()->first();
             if (! $job) {
                 Workspace::query()->whereIn('id', $workspaceIds)->whereNull('suspended_at')
@@ -90,8 +92,9 @@ class JobWorkerController extends Controller
 
     public function complete(Request $request, JobWorkerRequest $workerRequest)
     {
-        abort_unless($request->bearerToken() && $request->user()->tokenCan('jobs:write'), 403, 'A jobs:write worker token is required.');
-        abort_unless($request->user()->workspaces()->where('workspaces.id', $workerRequest->workspace_id)->exists(), 404);
+        abort_unless($request->bearerToken() && $request->user()->tokenCan('jobs:worker'), 403, 'A jobs:worker service token is required.');
+        abort_unless(Workspace::query()->whereKey($workerRequest->workspace_id)->whereNull('suspended_at')
+            ->whereHas('plan', fn ($query) => $query->where('slug', '!=', 'free'))->exists(), 404);
         abort_unless($workerRequest->status === 'running', 409, 'This request is not running.');
         $data = $request->validate(['status' => 'required|in:completed,failed', 'result' => 'nullable|array', 'error' => 'nullable|string|max:10000']);
         $workerRequest->update($data + ['finished_at' => now()]);

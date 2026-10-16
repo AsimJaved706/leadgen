@@ -117,7 +117,12 @@ class JobController extends Controller
 
     public function import(Request $request, Workspace $workspace): array
     {
-        $this->authorizeWorkspace($request, $workspace, true);
+        if ($request->bearerToken() && $request->user()->tokenCan('jobs:worker')) {
+            abort_if($workspace->suspended_at, 403, 'This workspace is suspended.');
+            abort_if($workspace->plan->slug === 'free', 402, 'A paid subscription is required to access jobs.');
+        } else {
+            $this->authorizeWorkspace($request, $workspace, true);
+        }
         $data = $request->validate([
             'source_platform' => 'required|string|max:100', 'jobs' => 'required|array|min:1|max:1000',
             'jobs.*' => 'required|array',
