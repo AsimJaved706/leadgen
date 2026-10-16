@@ -32,7 +32,11 @@ class JobController extends Controller
 
     public function index(Request $request, Workspace $workspace)
     {
-        $this->authorizeWorkspace($request, $workspace);
+        if ($request->bearerToken() && $request->user()->tokenCan('jobs:worker')) {
+            $this->authorizeWorkerWorkspace($workspace);
+        } else {
+            $this->authorizeWorkspace($request, $workspace);
+        }
         $data = $request->validate([
             'q' => 'nullable|string|max:150', 'source' => 'nullable|string|max:100',
             'country' => 'nullable|string|max:100', 'workplace_type' => 'nullable|string|max:30',
@@ -118,8 +122,7 @@ class JobController extends Controller
     public function import(Request $request, Workspace $workspace): array
     {
         if ($request->bearerToken() && $request->user()->tokenCan('jobs:worker')) {
-            abort_if($workspace->suspended_at, 403, 'This workspace is suspended.');
-            abort_if($workspace->plan->slug === 'free', 402, 'A paid subscription is required to access jobs.');
+            $this->authorizeWorkerWorkspace($workspace);
         } else {
             $this->authorizeWorkspace($request, $workspace, true);
         }
@@ -199,6 +202,12 @@ class JobController extends Controller
             ->when(($data['email_status'] ?? null) === 'with_email', fn ($q) => $q->hasCampaignEmail())
             ->when(($data['email_status'] ?? null) === 'without_email', fn ($q) => $q->where(fn ($inner) => $inner->whereNull('contact_email')->orWhere('contact_email', '')->orWhereNotIn('email_discovery_status', RecruitmentEmail::eligibleStatuses())))
             ->when($data['status'] ?? null, fn ($q, $v) => $q->where('status', $v));
+    }
+
+    private function authorizeWorkerWorkspace(Workspace $workspace): void
+    {
+        abort_if($workspace->suspended_at, 403, 'This workspace is suspended.');
+        abort_if($workspace->plan->slug === 'free', 402, 'A paid subscription is required to access jobs.');
     }
 
     private function validatedJob(Request $request): array

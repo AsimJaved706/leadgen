@@ -201,6 +201,8 @@ class JobsTest extends TestCase
         $this->withToken($token)->postJson("/api/workspaces/{$workspace->id}/jobs/import", ['source_platform' => 'LinkedIn', 'jobs' => [[
             'source_job_id' => 'worker-1', 'title' => 'Remote Developer', 'country' => 'Canada',
         ]]])->assertOk()->assertJsonPath('created', 1);
+        $this->withToken($token)->getJson("/api/workspaces/{$workspace->id}/jobs?per_page=15")
+            ->assertOk()->assertJsonPath('total', 1);
     }
 
     public function test_stale_worker_request_is_released_when_dashboard_checks_status(): void
