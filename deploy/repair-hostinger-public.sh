@@ -19,8 +19,10 @@ LOCK_FILE="$DOMAIN_ROOT/.repair-public.lock"
     fi
 
     cp -a "$BUILD_ROOT/assets/." "$PUBLIC_ROOT/assets/"
-    cp "$APP_ROOT/public/index.php" "$PUBLIC_ROOT/index.php"
-    cp "$APP_ROOT/public/.htaccess" "$PUBLIC_ROOT/.htaccess"
+    cp "$BACKEND_PUBLIC/index.php" "$PUBLIC_ROOT/index.php"
+    cp "$BACKEND_PUBLIC/.htaccess" "$PUBLIC_ROOT/.htaccess"
+    [ -f "$BACKEND_PUBLIC/favicon.ico" ] && cp "$BACKEND_PUBLIC/favicon.ico" "$PUBLIC_ROOT/favicon.ico"
+    [ -f "$BACKEND_PUBLIC/robots.txt" ] && cp "$BACKEND_PUBLIC/robots.txt" "$PUBLIC_ROOT/robots.txt"
 
     mkdir -p "$BACKEND_PUBLIC/assets"
     cp "$BUILD_ROOT/index.html" "$BACKEND_PUBLIC/index.html"
