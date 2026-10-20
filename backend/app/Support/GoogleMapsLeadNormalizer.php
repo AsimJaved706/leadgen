@@ -9,8 +9,8 @@ class GoogleMapsLeadNormalizer
     public static function normalize(array $row): array
     {
         $value = fn (string ...$keys) => self::first($row, $keys);
-        $listing = $value('ListingDetails', 'listingDetails') ?? '';
-        $name = self::cleanText($value('Name', 'name'));
+        $listing = $value('ListingDetails', 'listingDetails', 'rawDetails', 'RawDetails') ?? '';
+        $name = self::cleanText($value('Name', 'name', 'title', 'businessName', 'business_name'));
         if (! $name || preg_match('/^(sponsored|ad|)+$/iu', $name)) {
             $name = self::nameFromListing($listing);
         }
@@ -18,21 +18,21 @@ class GoogleMapsLeadNormalizer
             throw new \InvalidArgumentException('A business name could not be found.');
         }
 
-        $emails = self::split($value('Email', 'email'));
+        $emails = self::split($value('Email', 'email', 'emails', 'emailAddress', 'email_address', 'contactEmail', 'contact_email'));
         $emails = array_values(array_filter($emails, fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL)));
         $phones = self::phones($row);
         if (preg_match('/^\+?\d{7,15}$/', preg_replace('/[\s().-]/', '', $name)) && isset($phones[0])) {
             $name = 'Phone lead · '.$phones[0];
         }
-        $website = self::url($value('Website', 'website', 'ActionLinks_website'));
-        $address = self::cleanAddress($value('AdditionalDetails_address', 'Address', 'address'));
+        $website = self::url($value('Website', 'website', 'url', 'site', 'domain', 'ActionLinks_website'));
+        $address = self::cleanAddress($value('AdditionalDetails_address', 'Address', 'address', 'formatted_address', 'formattedAddress', 'vicinity', 'location'));
         [$parsedCity, $parsedState, $parsedPostal, $parsedCountry] = self::location($address);
-        $city = self::cleanText($value('City', 'city')) ?? $parsedCity;
-        $state = self::cleanText($value('State', 'state')) ?? $parsedState;
-        $postal = self::cleanText($value('PostalCode', 'postalCode', 'postal_code')) ?? $parsedPostal;
-        $country = self::cleanText($value('Country', 'country')) ?? $parsedCountry;
-        $rating = self::number($value('AverageRating', 'averageRating', 'rating'));
-        $reviews = self::integer($value('ReviewCount', 'reviewCount', 'reviews'));
+        $city = self::cleanText($value('City', 'city', 'locality')) ?? $parsedCity;
+        $state = self::cleanText($value('State', 'state', 'province', 'region')) ?? $parsedState;
+        $postal = self::cleanText($value('PostalCode', 'postalCode', 'postal_code', 'zip', 'zipCode', 'zip_code')) ?? $parsedPostal;
+        $country = self::cleanText($value('Country', 'country', 'countryCode', 'country_code')) ?? $parsedCountry;
+        $rating = self::number($value('AverageRating', 'averageRating', 'rating', 'stars'));
+        $reviews = self::integer($value('ReviewCount', 'reviewCount', 'reviews', 'user_ratings_total'));
         if ($rating === null && preg_match('/(?m)^([0-5](?:\.\d)?)\s*\(([\d,]+)\)/u', $listing, $match)) {
             $rating = (float) $match[1];
             $reviews ??= (int) str_replace(',', '', $match[2]);
@@ -89,15 +89,15 @@ class GoogleMapsLeadNormalizer
             'state' => $state,
             'postal_code' => $postal,
             'country' => $country,
-            'category' => self::cleanText($value('Category', 'category')),
-            'categories' => array_values(array_unique(self::split($value('Category', 'category')))),
+            'category' => self::cleanText($value('Category', 'category', 'types', 'type')),
+            'categories' => array_values(array_unique(self::split($value('Category', 'category', 'types', 'type')))),
             'place_id' => self::cleanText($value('PlaceID', 'placeID', 'place_id')),
             'cid' => self::cleanText($value('CID', 'cid')),
             'average_rating' => $rating,
             'review_count' => $reviews ?? 0,
             'latitude' => self::number($value('Latitude', 'latitude')),
             'longitude' => self::number($value('Longitude', 'longitude')),
-            'google_maps_url' => self::url($value('MapsURL', 'mapsURL', 'google_maps_url')),
+            'google_maps_url' => self::url($value('MapsURL', 'mapsURL', 'google_maps_url', 'googleMapsUrl', 'google_maps_link', 'map_url')),
             'description' => self::cleanText($value('Description', 'description')),
             'price_range' => self::cleanText($value('PriceRange', 'priceRange', 'price_range')),
             'plus_code' => self::cleanText($value('PlusCode', 'plusCode', 'plus_code')),
@@ -123,9 +123,17 @@ class GoogleMapsLeadNormalizer
 
     private static function first(array $row, array $keys): mixed
     {
+        $normalized = [];
+        foreach ($row as $key => $value) {
+            $normalized[self::key((string) $key)] = $value;
+        }
         foreach ($keys as $key) {
-            if (array_key_exists($key, $row) && ! is_array($row[$key]) && trim((string) $row[$key]) !== '') {
-                return trim((string) $row[$key]);
+            $value = $row[$key] ?? $normalized[self::key($key)] ?? null;
+            if (is_array($value)) {
+                $value = self::flatten($value);
+            }
+            if ($value !== null && trim((string) $value) !== '') {
+                return trim((string) $value);
             }
         }
 
@@ -137,7 +145,8 @@ class GoogleMapsLeadNormalizer
         if ($value === null) {
             return null;
         }
-        $value = trim(preg_replace('/[\x{E000}-\x{F8FF}]/u', '', (string) $value));
+        $value = self::repairEncoding((string) $value);
+        $value = trim(preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $value));
 
         return $value === '' ? null : $value;
     }
@@ -165,16 +174,19 @@ class GoogleMapsLeadNormalizer
             return [];
         }
 
-        return array_values(array_filter(array_map('trim', preg_split('/\s*[,;]\s*/', (string) $value))));
+        if (is_array($value)) {
+            $value = self::flatten($value);
+        }
+        return array_values(array_filter(array_map(fn ($part) => self::cleanText($part), preg_split('/\s*[,;|]\s*/', (string) $value))));
     }
 
     private static function phones(array $row): array
     {
         $values = [];
         foreach ($row as $key => $value) {
-            $normalizedKey = strtolower($key);
-            $isPhoneField = in_array($normalizedKey, ['phone', 'cell_phone_1', 'cell_phone_2', 'home_phone', 'work_phone', 'mobile', 'mobile_phone', 'additionaldetails_phone'], true)
-                || str_starts_with($normalizedKey, 'additionaldetails_phone_');
+            $normalizedKey = self::key((string) $key);
+            $isPhoneField = in_array($normalizedKey, ['phone', 'cellphone1', 'cellphone2', 'homephone', 'workphone', 'mobile', 'mobilephone', 'additionaldetailsphone', 'formattedphonenumber', 'internationalphonenumber'], true)
+                || str_starts_with($normalizedKey, 'additionaldetailsphone');
             if ($isPhoneField && $value) {
                 foreach (self::split($value) as $phone) {
                     if (preg_match('/\d{7,}/', preg_replace('/\D/', '', $phone))) {
@@ -192,7 +204,15 @@ class GoogleMapsLeadNormalizer
         if (! $value) {
             return null;
         }
+        if (is_array($value)) {
+            $value = self::flatten($value);
+        }
         $value = trim(html_entity_decode(str_replace('\\u0026', '&', (string) $value)));
+        if (str_starts_with($value, '//')) {
+            $value = 'https:'.$value;
+        } elseif (preg_match('/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i', $value)) {
+            $value = 'https://'.$value;
+        }
 
         return filter_var($value, FILTER_VALIDATE_URL) ? $value : null;
     }
@@ -231,5 +251,32 @@ class GoogleMapsLeadNormalizer
         }
 
         return [null, null, null, null];
+    }
+
+    private static function key(string $value): string
+    {
+        return strtolower((string) preg_replace('/[^a-z0-9]/i', '', preg_replace('/^\xEF\xBB\xBF/', '', $value)));
+    }
+
+    private static function flatten(array $value): string
+    {
+        $items = [];
+        array_walk_recursive($value, function ($item) use (&$items) {
+            if (is_scalar($item) && trim((string) $item) !== '') {
+                $items[] = trim((string) $item);
+            }
+        });
+        return implode(', ', $items);
+    }
+
+    private static function repairEncoding(string $value): string
+    {
+        if (str_contains($value, 'Â') || str_contains($value, 'â€')) {
+            $repaired = @iconv('UTF-8', 'Windows-1252//IGNORE', $value);
+            if ($repaired !== false && preg_match('//u', $repaired)) {
+                return $repaired;
+            }
+        }
+        return $value;
     }
 }

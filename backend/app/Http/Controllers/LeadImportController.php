@@ -35,7 +35,7 @@ class LeadImportController extends Controller
                 try {
                     $data = GoogleMapsLeadNormalizer::normalize($row);
                     $lead = null;
-                    foreach (['cid', 'place_id', 'google_maps_url', 'normalized_phone', 'name_address_hash'] as $field) {
+                    foreach (['cid', 'place_id', 'google_maps_url', 'website_domain', 'email', 'normalized_phone', 'name_address_hash'] as $field) {
                         if (! empty($data[$field])) {
                             $lead = $workspace->leads()->where($field, $data[$field])->first();
                             if ($lead) {
