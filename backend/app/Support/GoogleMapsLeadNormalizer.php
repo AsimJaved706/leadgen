@@ -19,12 +19,12 @@ class GoogleMapsLeadNormalizer
         }
 
         $emails = self::split($value('Email', 'email', 'emails', 'emailAddress', 'email_address', 'contactEmail', 'contact_email'));
-        $emails = array_values(array_filter($emails, fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL)));
+        $emails = array_values(array_filter($emails, fn ($email) => strlen($email) <= 255 && filter_var($email, FILTER_VALIDATE_EMAIL)));
         $phones = self::phones($row);
         if (preg_match('/^\+?\d{7,15}$/', preg_replace('/[\s().-]/', '', $name)) && isset($phones[0])) {
             $name = 'Phone lead · '.$phones[0];
         }
-        $website = self::url($value('Website', 'website', 'url', 'site', 'domain', 'ActionLinks_website'));
+        $website = self::website($value('Website', 'website', 'url', 'site', 'domain', 'ActionLinks_website'));
         $address = self::cleanAddress($value('AdditionalDetails_address', 'Address', 'address', 'formatted_address', 'formattedAddress', 'vicinity', 'location'));
         [$parsedCity, $parsedState, $parsedPostal, $parsedCountry] = self::location($address);
         $city = self::cleanText($value('City', 'city', 'locality')) ?? $parsedCity;
@@ -76,31 +76,31 @@ class GoogleMapsLeadNormalizer
         ]);
 
         return array_filter([
-            'name' => $name,
-            'phone' => $phones[0] ?? null,
+            'name' => self::limit($name),
+            'phone' => self::limit($phones[0] ?? null),
             'secondary_phones' => array_slice($phones, 1),
             'normalized_phone' => isset($phones[0]) ? preg_replace('/\D/', '', $phones[0]) : null,
             'email' => $emails[0] ?? null,
             'additional_emails' => array_slice($emails, 1),
             'website' => $website,
-            'website_domain' => $website ? preg_replace('/^www\./', '', strtolower(parse_url($website, PHP_URL_HOST) ?? '')) : null,
+            'website_domain' => $website ? self::limit(preg_replace('/^www\./', '', strtolower(parse_url($website, PHP_URL_HOST) ?? ''))) : null,
             'address' => $address,
-            'city' => $city,
-            'state' => $state,
-            'postal_code' => $postal,
-            'country' => $country,
-            'category' => self::cleanText($value('Category', 'category', 'types', 'type')),
+            'city' => self::limit($city),
+            'state' => self::limit($state),
+            'postal_code' => self::limit($postal),
+            'country' => self::limit($country),
+            'category' => self::limit(self::cleanText($value('Category', 'category', 'types', 'type'))),
             'categories' => array_values(array_unique(self::split($value('Category', 'category', 'types', 'type')))),
-            'place_id' => self::cleanText($value('PlaceID', 'placeID', 'place_id')),
-            'cid' => self::cleanText($value('CID', 'cid')),
+            'place_id' => self::limit(self::cleanText($value('PlaceID', 'placeID', 'place_id'))),
+            'cid' => self::limit(self::cleanText($value('CID', 'cid'))),
             'average_rating' => $rating,
             'review_count' => $reviews ?? 0,
             'latitude' => self::number($value('Latitude', 'latitude')),
             'longitude' => self::number($value('Longitude', 'longitude')),
             'google_maps_url' => self::url($value('MapsURL', 'mapsURL', 'google_maps_url', 'googleMapsUrl', 'google_maps_link', 'map_url')),
             'description' => self::cleanText($value('Description', 'description')),
-            'price_range' => self::cleanText($value('PriceRange', 'priceRange', 'price_range')),
-            'plus_code' => self::cleanText($value('PlusCode', 'plusCode', 'plus_code')),
+            'price_range' => self::limit(self::cleanText($value('PriceRange', 'priceRange', 'price_range'))),
+            'plus_code' => self::limit(self::cleanText($value('PlusCode', 'plusCode', 'plus_code'))),
             'menu_url' => self::url($sourceActions['menu'] ?? $value('MenuURL', 'menuURL')),
             'order_url' => self::url($sourceActions['order'] ?? $value('OrderURL', 'orderURL')),
             'reservation_url' => self::url($sourceActions['reserve'] ?? $value('ReservationURL', 'reservationURL', 'ActionLinks_reserve')),
@@ -215,6 +215,42 @@ class GoogleMapsLeadNormalizer
         }
 
         return filter_var($value, FILTER_VALIDATE_URL) ? $value : null;
+    }
+
+    private static function website(mixed $value): ?string
+    {
+        $url = self::url($value);
+        if (! $url) {
+            return null;
+        }
+        $parts = parse_url($url);
+        if (! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+        $query = [];
+        parse_str($parts['query'] ?? '', $query);
+        foreach (array_keys($query) as $key) {
+            if (preg_match('/^(utm_|gclid$|fbclid$|mc_|_ga$|ref$|source$)/i', (string) $key)) {
+                unset($query[$key]);
+            }
+        }
+        $base = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
+        $path = $parts['path'] ?? '';
+        $canonical = $base.$path.(count($query) ? '?'.http_build_query($query) : '');
+        if (strlen($canonical) <= 255) {
+            return $canonical;
+        }
+        // A tracking URL is not useful if it cannot fit in the database. Keep
+        // the stable business origin so the record can still be enriched.
+        return $base;
+    }
+
+    private static function limit(?string $value, int $length = 255): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        return mb_substr($value, 0, $length);
     }
 
     private static function number(mixed $value): ?float
