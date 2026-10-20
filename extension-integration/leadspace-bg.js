@@ -33,7 +33,12 @@ async function selectedWorkspace(checkLeadLimit = true) {
   if (!workspace) throw new Error('No workspace is available for this account.');
   if (!workspace.access.allowed) throw new Error(workspace.access.reason || 'This workspace cannot use the extension.');
   if (checkLeadLimit && workspace.usage.leads >= workspace.usage.limit) throw new Error('The workspace lead storage limit has been reached.');
-  return {stored, context, workspace};
+  let listId = Number(stored.leadspaceListId);
+  if (!workspace.lists.some(list => list.id === listId)) {
+    listId = Number(workspace.lists[0]?.id || 0);
+    if (listId) await chrome.storage.local.set({leadspaceWorkspaceId: workspace.id, leadspaceListId: listId});
+  }
+  return {stored: {...stored, leadspaceWorkspaceId: workspace.id, leadspaceListId: listId || null}, context, workspace};
 }
 
 async function connectLeadspace() {
@@ -67,7 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message.action === 'leadspaceSave' && Array.isArray(message.data)) {
       const {stored, workspace} = await selectedWorkspace();
       const listId = Number(stored.leadspaceListId);
-      if (!workspace.lists.some(list => list.id === listId)) throw new Error('Choose a Lead List in the extension before saving.');
+      if (!workspace.lists.some(list => list.id === listId)) throw new Error('Create a Lead List in Leadspace before saving Google Maps records.');
       return leadspaceApi(`/extension/workspaces/${workspace.id}/leads`, {method: 'POST', body: JSON.stringify({list_id: listId, leads: message.data})});
     }
     if (message.action === 'leadspaceSaveLinkedInJob') {
