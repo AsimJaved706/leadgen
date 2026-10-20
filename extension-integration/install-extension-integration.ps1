@@ -42,6 +42,9 @@ $buttonNew = 'const save=document.createElement("button");save.className="extens
 if ($content.Contains($buttonOld)) { $content = $content.Replace($buttonOld, $buttonNew) }
 elseif (-not $content.Contains('extension_gms_save_btn')) { throw 'Could not find the Maps toolbar buttons.' }
 $content = $content.Replace('alert(`${result.data.saved} leads saved to ${result.data.list}.`)', 'alert(`${result.data.saved} leads saved to ${result.data.list}.${result.data.failed ? ` ${result.data.failed} failed: ${result.data.errors?.[0]?.message || "invalid data"}` : ""}`)')
+$content = $content.Replace('category: Array.isArray(data[13]) ? data[13].join(";") : "",', 'category: "",')
+$content = $content.Replace('if (collectDetails && !detailedKeys.has(key) && (!saved.phone || !saved.website)) {', 'if (collectDetails && !detailedKeys.has(key)) {')
+$content = $content.Replace('save.disabled=true;save.innerText="Saving...";try{const result=await chrome.runtime.sendMessage', 'save.disabled=true;save.innerText="Finishing contact lookup...";try{await enrichmentQueue;const result=await chrome.runtime.sendMessage')
 Set-Content $contentPath $content -Encoding utf8
 
 Write-Output "Leadspace integration installed in $extensionRoot"
